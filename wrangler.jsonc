@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lowvelocity-sync",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-06-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "GHOST_URL": "https://lowvelocity.org",
+    "ATPROTO_SERVICE": "https://enoki.us-east.host.bsky.network",
+    "ATPROTO_IDENTIFIER": "lowvelocity.org",
+    "ATPROTO_DID": "did:plc:peshyp24p4yyoaz3zdsppp3e",
+    "PUBLICATION_URI": "at://did:plc:peshyp24p4yyoaz3zdsppp3e/site.standard.publication/3mgwfts634r2z"
+  },
+  "routes": [
+    {
+      "pattern": "sync.lowvelocity.org",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare",
+    "run_worker_first": true
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  }
+}

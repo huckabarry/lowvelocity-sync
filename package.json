@@ -1,0 +1,34 @@
+{
+  "name": "lowvelocity-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0 <23"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "npm run build && wrangler dev",
+    "prepare": "svelte-kit sync",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "webhooks:install": "node --experimental-strip-types scripts/install-webhooks.ts",
+    "sync:test": "node --experimental-strip-types scripts/test-sync.ts",
+    "record:delete": "node --experimental-strip-types scripts/delete-record.ts",
+    "webhook:test-live": "node --experimental-strip-types scripts/trigger-ghost-edit.ts",
+    "types": "wrangler types",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-cloudflare": "^7.2.8",
+    "@sveltejs/kit": "^2.57.0",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "svelte": "^5.55.2",
+    "svelte-check": "^4.4.6",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.7",
+    "wrangler": "^4.81.0"
+  }
+}
