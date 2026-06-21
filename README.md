@@ -26,6 +26,11 @@ npm run deploy
 Secrets must be added with `wrangler secret put`; they do not belong in this
 repository or `wrangler.jsonc`.
 
+Pushes to `main` are tested, built, and deployed automatically by GitHub
+Actions. The repository must contain `CLOUDFLARE_ACCOUNT_ID` and a narrowly
+scoped `CLOUDFLARE_API_TOKEN` as GitHub Actions secrets. Runtime application
+secrets remain stored in Cloudflare and are preserved across deployments.
+
 Required secrets:
 
 ```sh
