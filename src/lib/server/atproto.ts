@@ -4,6 +4,7 @@ import { DOCUMENT_COLLECTION, type StandardDocument } from './transform.ts';
 
 interface SessionResponse { did?: string; accessJwt?: string; }
 interface RecordResponse { uri?: string; cid?: string; }
+interface GetRecordResponse { uri?: string; cid?: string; value?: Record<string, unknown>; }
 interface ListedRecord { uri?: string; value?: Record<string, unknown>; }
 interface ListRecordsResponse { records?: ListedRecord[]; cursor?: string; }
 
@@ -20,6 +21,25 @@ async function createSession(config: SyncConfig): Promise<{ did: string; accessJ
 }
 
 export interface PutDocumentResult { uri: string; cid: string; }
+
+async function getDocumentByRkey(
+  config: SyncConfig,
+  accessJwt: string,
+  rkey: string
+): Promise<{ rkey: string; value: Record<string, unknown> } | null> {
+  const url = new URL(`${config.atprotoService}/xrpc/com.atproto.repo.getRecord`);
+  url.searchParams.set('repo', config.atprotoDid);
+  url.searchParams.set('collection', DOCUMENT_COLLECTION);
+  url.searchParams.set('rkey', rkey);
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessJwt}`, Accept: 'application/json' } });
+  try {
+    const result = await readJsonResponse<GetRecordResponse>(response, 'AT Protocol PDS');
+    return result.value ? { rkey, value: result.value } : null;
+  } catch (error) {
+    if (error instanceof UpstreamError && error.code === 'RecordNotFound') return null;
+    throw error;
+  }
+}
 
 async function findDocumentByPath(
   config: SyncConfig,
@@ -54,7 +74,8 @@ async function findDocumentByPath(
 
 export async function putDocument(config: SyncConfig, rkey: string, record: StandardDocument): Promise<PutDocumentResult> {
   const session = await createSession(config);
-  const existing = await findDocumentByPath(config, session.accessJwt, record.path);
+  const existing = await getDocumentByRkey(config, session.accessJwt, rkey)
+    ?? await findDocumentByPath(config, session.accessJwt, record.path);
   const resolvedRkey = existing?.rkey ?? rkey;
   const resolvedRecord = existing ? { ...existing.value, ...record } : record;
   const response = await fetch(`${config.atprotoService}/xrpc/com.atproto.repo.putRecord`, {
@@ -67,14 +88,11 @@ export async function putDocument(config: SyncConfig, rkey: string, record: Stan
   return { uri: result.uri, cid: result.cid };
 }
 
-export async function deleteDocument(config: SyncConfig, rkey: string, path?: string): Promise<boolean> {
-  const session = await createSession(config);
-  const existing = path ? await findDocumentByPath(config, session.accessJwt, path) : null;
-  const resolvedRkey = existing?.rkey ?? rkey;
+async function deleteDocumentByRkey(config: SyncConfig, accessJwt: string, did: string, rkey: string): Promise<boolean> {
   const response = await fetch(`${config.atprotoService}/xrpc/com.atproto.repo.deleteRecord`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${session.accessJwt}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ repo: session.did, collection: DOCUMENT_COLLECTION, rkey: resolvedRkey })
+    headers: { Authorization: `Bearer ${accessJwt}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ repo: did, collection: DOCUMENT_COLLECTION, rkey })
   });
   try {
     await readJsonResponse<Record<string, never>>(response, 'AT Protocol PDS');
@@ -83,4 +101,12 @@ export async function deleteDocument(config: SyncConfig, rkey: string, path?: st
     if (error instanceof UpstreamError && error.code === 'RecordNotFound') return false;
     throw error;
   }
+}
+
+export async function deleteDocument(config: SyncConfig, rkey: string, path?: string): Promise<boolean> {
+  const session = await createSession(config);
+  if (await deleteDocumentByRkey(config, session.accessJwt, session.did, rkey)) return true;
+  const existing = path ? await findDocumentByPath(config, session.accessJwt, path) : null;
+  if (!existing || existing.rkey === rkey) return false;
+  return deleteDocumentByRkey(config, session.accessJwt, session.did, existing.rkey);
 }
