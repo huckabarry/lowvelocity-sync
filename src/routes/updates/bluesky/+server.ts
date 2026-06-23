@@ -3,6 +3,7 @@ import { getSyncConfig } from '$lib/server/config';
 import { BLUESKY_UPDATES_LIMIT, readBlueskyUpdates } from '$lib/server/bluesky';
 
 const CACHE_SECONDS = 600;
+const CACHE_VERSION = '2';
 
 const RESPONSE_HEADERS = {
   'access-control-allow-origin': '*',
@@ -13,6 +14,7 @@ const RESPONSE_HEADERS = {
 function cacheKey(request: Request): Request {
   const url = new URL(request.url);
   url.search = '';
+  url.searchParams.set('v', CACHE_VERSION);
   return new Request(url.toString(), { method: 'GET' });
 }
 

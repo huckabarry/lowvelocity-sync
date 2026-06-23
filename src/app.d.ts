@@ -10,6 +10,8 @@ declare global {
     ATPROTO_DID: string;
     ATPROTO_IDENTIFIER: string;
     ATPROTO_SERVICE: string;
+    BLUESKY_UPDATES_DID?: string;
+    BLUESKY_UPDATES_IDENTIFIER?: string;
     GHOST_URL: string;
     PUBLICATION_URI: string;
   }

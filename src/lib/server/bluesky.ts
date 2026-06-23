@@ -230,7 +230,7 @@ export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPD
 
   for (let page = 0; page < 5 && items.length < limit; page += 1) {
     const url = new URL('/xrpc/app.bsky.feed.getAuthorFeed', 'https://public.api.bsky.app');
-    url.searchParams.set('actor', config.atprotoDid);
+    url.searchParams.set('actor', config.blueskyUpdatesDid);
     url.searchParams.set('filter', 'posts_with_replies');
     url.searchParams.set('limit', '100');
     if (cursor) url.searchParams.set('cursor', cursor);
@@ -238,7 +238,7 @@ export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPD
     const response = await fetch(url);
     const body = await readJsonResponse<BlueskyAuthorFeedResponse>(response, 'Bluesky public API');
     for (const feedItem of body.feed ?? []) {
-      const update = normalizeBlueskyFeedItem(feedItem, config.atprotoDid);
+      const update = normalizeBlueskyFeedItem(feedItem, config.blueskyUpdatesDid);
       if (update) items.push(update);
       if (items.length >= limit) break;
     }
@@ -248,8 +248,8 @@ export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPD
 
   return {
     source: {
-      did: config.atprotoDid,
-      handle: config.atprotoIdentifier
+      did: config.blueskyUpdatesDid,
+      handle: config.blueskyUpdatesIdentifier
     },
     fetchedAt: new Date().toISOString(),
     limit,

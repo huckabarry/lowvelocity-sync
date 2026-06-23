@@ -10,6 +10,8 @@
     "ATPROTO_SERVICE": "https://enoki.us-east.host.bsky.network",
     "ATPROTO_IDENTIFIER": "lowvelocity.org",
     "ATPROTO_DID": "did:plc:peshyp24p4yyoaz3zdsppp3e",
+    "BLUESKY_UPDATES_IDENTIFIER": "bryan.eurosky.social",
+    "BLUESKY_UPDATES_DID": "did:plc:vt4k6d3e5rjw65cuzaf3nufq",
     "PUBLICATION_URI": "at://did:plc:peshyp24p4yyoaz3zdsppp3e/site.standard.publication/3mgwfts634r2z"
   },
   "routes": [
