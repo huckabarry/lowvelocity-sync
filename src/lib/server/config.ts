@@ -10,6 +10,7 @@ export interface SyncConfig {
   blueskyUpdatesDid: string;
   atprotoAppPassword: string;
   publicationUri: string;
+  standardSiteSyncEnabled: boolean;
 }
 
 function required(env: App.Platform['env'], name: keyof App.Platform['env']): string {
@@ -41,7 +42,8 @@ export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
     blueskyUpdatesIdentifier: optional(platform.env, 'BLUESKY_UPDATES_IDENTIFIER') ?? atprotoIdentifier,
     blueskyUpdatesDid: optional(platform.env, 'BLUESKY_UPDATES_DID') ?? atprotoDid,
     atprotoAppPassword: required(platform.env, 'ATPROTO_APP_PASSWORD'),
-    publicationUri: required(platform.env, 'PUBLICATION_URI')
+    publicationUri: required(platform.env, 'PUBLICATION_URI'),
+    standardSiteSyncEnabled: optional(platform.env, 'STANDARD_SITE_SYNC_ENABLED') !== 'false'
   };
 }
 
@@ -51,6 +53,7 @@ export function configurationStatus(platform: App.Platform | undefined) {
     ghost: Boolean(env?.GHOST_URL && env?.GHOST_ADMIN_API_KEY && env?.GHOST_WEBHOOK_SECRET),
     ghostActivityPub: Boolean(env?.GHOST_URL && env?.GHOST_STAFF_ACCESS_TOKEN),
     atproto: Boolean(env?.ATPROTO_SERVICE && env?.ATPROTO_IDENTIFIER && env?.ATPROTO_DID && env?.ATPROTO_APP_PASSWORD && env?.PUBLICATION_URI),
-    blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID)
+    blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID),
+    standardSiteSyncEnabled: env?.STANDARD_SITE_SYNC_ENABLED !== 'false'
   };
 }

@@ -14,6 +14,7 @@ declare global {
     BLUESKY_UPDATES_IDENTIFIER?: string;
     GHOST_URL: string;
     PUBLICATION_URI: string;
+    STANDARD_SITE_SYNC_ENABLED?: string;
   }
 
   namespace App {

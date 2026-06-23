@@ -5,6 +5,14 @@ import { readGhostPost, setDocumentLink } from './ghost.ts';
 import { ghostPostToDocument } from './transform.ts';
 
 export async function syncPublishedPost(config: SyncConfig, postId: string) {
+  if (!config.standardSiteSyncEnabled) {
+    return {
+      action: 'skip' as const,
+      reason: 'standard.site sync disabled' as const,
+      postId
+    };
+  }
+
   const post = await readGhostPost(config, postId);
   if (post.status !== 'published') throw new Error(`Refusing to sync Ghost post with status ${post.status}`);
   const rkey = existingDocumentRkey(post) ?? post.id;
@@ -20,5 +28,13 @@ export async function syncPublishedPost(config: SyncConfig, postId: string) {
 }
 
 export async function removePublishedPost(config: SyncConfig, postId: string, path?: string) {
+  if (!config.standardSiteSyncEnabled) {
+    return {
+      action: 'skip-delete' as const,
+      reason: 'standard.site sync disabled' as const,
+      postId
+    };
+  }
+
   return { action: 'delete' as const, postId, deleted: await deleteDocument(config, postId, path) };
 }
