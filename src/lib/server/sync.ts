@@ -15,6 +15,15 @@ export async function syncPublishedPost(config: SyncConfig, postId: string) {
 
   const post = await readGhostPost(config, postId);
   if (post.status !== 'published') throw new Error(`Refusing to sync Ghost post with status ${post.status}`);
+  if (post.tags?.some((tag) => tag.name === '#crucialtracks')) {
+    return {
+      action: 'skip' as const,
+      reason: 'crucial tracks posts are excluded from standard.site sync' as const,
+      postId: post.id,
+      slug: post.slug
+    };
+  }
+
   const rkey = existingDocumentRkey(post) ?? post.id;
   const result = await putDocument(config, rkey, ghostPostToDocument(post, config.publicationUri));
   return {

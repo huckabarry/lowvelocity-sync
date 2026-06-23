@@ -13,7 +13,7 @@
     "BLUESKY_UPDATES_IDENTIFIER": "bryan.eurosky.social",
     "BLUESKY_UPDATES_DID": "did:plc:vt4k6d3e5rjw65cuzaf3nufq",
     "PUBLICATION_URI": "at://did:plc:peshyp24p4yyoaz3zdsppp3e/site.standard.publication/3mgwfts634r2z",
-    "STANDARD_SITE_SYNC_ENABLED": "false"
+    "STANDARD_SITE_SYNC_ENABLED": "true"
   },
   "routes": [
     {
