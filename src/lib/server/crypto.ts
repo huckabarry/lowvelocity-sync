@@ -25,6 +25,17 @@ export async function createGhostAdminToken(apiKey: string, now = Date.now()): P
   return `${unsigned}.${bytesToBase64Url(signature)}`;
 }
 
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  const left = encoder.encode(a);
+  const right = encoder.encode(b);
+  let mismatch = left.length ^ right.length;
+  const maxLength = Math.max(left.length, right.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    mismatch |= (left[index] ?? 0) ^ (right[index] ?? 0);
+  }
+  return mismatch === 0;
+}
+
 export interface GhostSignature {
   digest: Uint8Array;
   timestamp: string;

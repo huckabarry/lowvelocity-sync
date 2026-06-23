@@ -23,6 +23,21 @@ export interface GhostPost {
 
 interface GhostPostsResponse { posts?: GhostPost[]; }
 
+interface GhostIdentitiesResponse { identities?: { token?: string }[]; errors?: { message?: string }[]; }
+
+export interface GhostActivityPubNote {
+  id: string;
+  type: number;
+  content: string;
+  url: string;
+  publishedAt: string;
+}
+
+interface GhostActivityPubNoteResponse {
+  post?: GhostActivityPubNote;
+  error?: string;
+}
+
 function assertGhostPost(post: GhostPost | undefined): GhostPost {
   if (!post?.id || !post.slug || !post.title || !post.status || !post.url || !post.published_at || !post.updated_at) {
     throw new Error('Ghost returned an incomplete post');
@@ -36,6 +51,58 @@ async function ghostHeaders(config: SyncConfig): Promise<HeadersInit> {
     'Accept-Version': 'v5.0',
     Authorization: `Ghost ${await createGhostAdminToken(config.ghostAdminApiKey)}`
   };
+}
+
+async function ghostStaffHeaders(config: SyncConfig): Promise<HeadersInit> {
+  if (!config.ghostStaffAccessToken) {
+    throw new Error('Ghost staff access token is not configured');
+  }
+  return {
+    Accept: 'application/json',
+    'Accept-Version': 'v6.0',
+    Authorization: `Ghost ${await createGhostAdminToken(config.ghostStaffAccessToken)}`
+  };
+}
+
+export async function readGhostActivityPubIdentityToken(config: SyncConfig): Promise<string> {
+  const url = new URL('/ghost/api/admin/identities/', config.ghostUrl);
+  const response = await fetch(url, { headers: await ghostStaffHeaders(config) });
+  const body = await readJsonResponse<GhostIdentitiesResponse>(response, 'Ghost Admin identities API');
+  const token = body.identities?.[0]?.token;
+  if (!token) {
+    throw new Error(body.errors?.[0]?.message ?? 'Ghost did not return an ActivityPub identity token');
+  }
+  return token;
+}
+
+export async function createGhostActivityPubNote(
+  config: SyncConfig,
+  content: string,
+  image?: { url: string; altText?: string }
+): Promise<GhostActivityPubNote> {
+  const trimmed = content.trim();
+  if (!trimmed) throw new Error('ActivityPub note content is required');
+  if (trimmed.length > 5000) throw new Error('ActivityPub note content is too long');
+
+  const identityToken = await readGhostActivityPubIdentityToken(config);
+  const url = new URL('/.ghost/activitypub/v1/actions/note', config.ghostUrl);
+  const body: { content: string; image?: { url: string; altText?: string } } = { content: trimmed };
+  if (image) body.image = image;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${identityToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  const result = await readJsonResponse<GhostActivityPubNoteResponse>(response, 'Ghost ActivityPub API');
+  if (!result.post?.id || !result.post.url) {
+    throw new Error(result.error ?? 'Ghost ActivityPub API did not return a note');
+  }
+  return result.post;
 }
 
 export async function readGhostPost(config: SyncConfig, postId: string): Promise<GhostPost> {
