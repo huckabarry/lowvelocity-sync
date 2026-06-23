@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   try {
     const config = getSyncConfig(platform);
     const token = bearerToken(request);
-    if (!token || !timingSafeStringEqual(token, config.ghostWebhookSecret)) {
+    if (!token || !config.ghostStaffAccessToken || !timingSafeStringEqual(token, config.ghostStaffAccessToken)) {
       return json({ error: 'unauthorized', requestId }, { status: 401 });
     }
 
