@@ -1,0 +1,74 @@
+name: Import Crucial Tracks to Ghost
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview only; do not create or update Ghost posts
+        required: true
+        type: boolean
+        default: true
+      update_existing:
+        description: Update existing imported listening posts
+        required: true
+        type: boolean
+        default: false
+      batch_size:
+        description: Number of tracks per Worker request
+        required: true
+        default: "10"
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    name: Import Crucial Tracks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Import in batches
+        env:
+          GHOST_STAFF_ACCESS_TOKEN: ${{ secrets.GHOST_STAFF_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          UPDATE_EXISTING: ${{ inputs.update_existing }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          offset=0
+          batch_size="${BATCH_SIZE:-10}"
+
+          while true; do
+            response_file="$(mktemp)"
+            status="$(
+              jq --null-input \
+                --argjson dryRun "${DRY_RUN}" \
+                --argjson updateExisting "${UPDATE_EXISTING}" \
+                --argjson limit "${batch_size}" \
+                --argjson offset "${offset}" \
+                '{dryRun: $dryRun, updateExisting: $updateExisting, limit: $limit, offset: $offset}' |
+              curl --silent --show-error \
+                --request POST \
+                --output "${response_file}" \
+                --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" \
+                --header "Content-Type: application/json" \
+                --data-binary @- \
+                "https://sync.lowvelocity.org/admin/import/crucial-tracks"
+            )"
+
+            echo "status=${status} offset=${offset}"
+            cat "${response_file}" | jq '.'
+            if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+              exit 1
+            fi
+
+            next_offset="$(jq -r '.nextOffset // empty' "${response_file}")"
+            if [[ -z "${next_offset}" ]]; then
+              break
+            fi
+            offset="${next_offset}"
+          done

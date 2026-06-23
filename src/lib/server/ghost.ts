@@ -22,6 +22,8 @@ export interface GhostPost {
 }
 
 interface GhostPostsResponse { posts?: GhostPost[]; }
+interface GhostPagesResponse { pages?: GhostPost[]; }
+interface GhostImagesResponse { images?: { url?: string }[]; }
 
 interface GhostIdentitiesResponse { identities?: { token?: string }[]; errors?: { message?: string }[]; }
 
@@ -45,7 +47,7 @@ function assertGhostPost(post: GhostPost | undefined): GhostPost {
   return post;
 }
 
-async function ghostHeaders(config: SyncConfig): Promise<HeadersInit> {
+export async function ghostHeaders(config: SyncConfig): Promise<HeadersInit> {
   return {
     Accept: 'application/json',
     'Accept-Version': 'v5.0',
@@ -112,6 +114,84 @@ export async function readGhostPost(config: SyncConfig, postId: string): Promise
   const response = await fetch(url, { headers: await ghostHeaders(config) });
   const body = await readJsonResponse<GhostPostsResponse>(response, 'Ghost Admin API');
   return assertGhostPost(body.posts?.[0]);
+}
+
+export async function findGhostPostBySlug(
+  config: SyncConfig,
+  slug: string,
+  type: 'posts' | 'pages' = 'posts'
+): Promise<GhostPost | null> {
+  const url = new URL(`/ghost/api/admin/${type}/`, config.ghostUrl);
+  url.searchParams.set('formats', 'html');
+  url.searchParams.set('include', 'tags');
+  url.searchParams.set('filter', `slug:${slug}`);
+  url.searchParams.set('limit', '1');
+  const response = await fetch(url, { headers: await ghostHeaders(config) });
+  const body = await readJsonResponse<GhostPostsResponse & GhostPagesResponse>(response, 'Ghost Admin API');
+  return (type === 'pages' ? body.pages?.[0] : body.posts?.[0]) ?? null;
+}
+
+export interface GhostHtmlEntryInput {
+  slug: string;
+  title: string;
+  html: string;
+  custom_excerpt?: string;
+  feature_image?: string | null;
+  published_at?: string;
+  tags?: Array<{ name: string }>;
+  status?: 'draft' | 'published';
+}
+
+export async function createGhostHtmlEntry(
+  config: SyncConfig,
+  input: GhostHtmlEntryInput,
+  type: 'posts' | 'pages' = 'posts'
+): Promise<GhostPost> {
+  const url = new URL(`/ghost/api/admin/${type}/`, config.ghostUrl);
+  url.searchParams.set('source', 'html');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...(await ghostHeaders(config)), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [type]: [{ status: 'published', ...input }] })
+  });
+  const body = await readJsonResponse<GhostPostsResponse & GhostPagesResponse>(response, 'Ghost Admin API');
+  return assertGhostPost(type === 'pages' ? body.pages?.[0] : body.posts?.[0]);
+}
+
+export async function updateGhostHtmlEntry(
+  config: SyncConfig,
+  existing: GhostPost,
+  input: GhostHtmlEntryInput,
+  type: 'posts' | 'pages' = 'posts'
+): Promise<GhostPost> {
+  const url = new URL(`/ghost/api/admin/${type}/${encodeURIComponent(existing.id)}/`, config.ghostUrl);
+  url.searchParams.set('source', 'html');
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: { ...(await ghostHeaders(config)), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [type]: [{ id: existing.id, updated_at: existing.updated_at, ...input }] })
+  });
+  const body = await readJsonResponse<GhostPostsResponse & GhostPagesResponse>(response, 'Ghost Admin API');
+  return assertGhostPost(type === 'pages' ? body.pages?.[0] : body.posts?.[0]);
+}
+
+export async function uploadGhostImageFromUrl(config: SyncConfig, imageUrl: string, filename: string): Promise<string | null> {
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) return null;
+  const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+  const blob = new Blob([await imageResponse.arrayBuffer()], { type: contentType });
+  const form = new FormData();
+  form.set('file', blob, filename);
+  form.set('purpose', 'image');
+
+  const uploadUrl = new URL('/ghost/api/admin/images/upload/', config.ghostUrl);
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: await ghostHeaders(config),
+    body: form
+  });
+  const body = await readJsonResponse<GhostImagesResponse>(response, 'Ghost Admin images API');
+  return body.images?.[0]?.url ?? null;
 }
 
 const MARKER_START = '<!-- standard.site:document -->';
