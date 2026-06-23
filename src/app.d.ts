@@ -2,6 +2,7 @@ declare global {
   interface SyncSecrets {
     ATPROTO_APP_PASSWORD: string;
     GHOST_ADMIN_API_KEY: string;
+    GHOST_STAFF_ACCESS_TOKEN: string;
     GHOST_WEBHOOK_SECRET: string;
   }
 
