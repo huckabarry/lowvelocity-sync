@@ -221,6 +221,7 @@ export async function getCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
 
 function musicPostHtml(entry: CrucialTrackEntry, ghostImageUrl: string | null): string {
   const links = [
+    entry.previewUrl ? `<a href="${escapeHtml(entry.previewUrl)}" rel="noopener">Preview audio</a>` : '',
     entry.appleMusicUrl ? `<a href="${escapeHtml(entry.appleMusicUrl)}" rel="noopener">Apple Music</a>` : '',
     entry.songlinkUrl ? `<a href="${escapeHtml(entry.songlinkUrl)}" rel="noopener">Listen elsewhere</a>` : '',
     entry.playlistUrl ? `<a href="${escapeHtml(entry.playlistUrl)}" rel="noopener">Playlist</a>` : '',
@@ -235,7 +236,6 @@ function musicPostHtml(entry: CrucialTrackEntry, ghostImageUrl: string | null): 
     `<h2>${escapeHtml(entry.title)}</h2>`,
     entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
     entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
-    entry.previewUrl ? `<div class="lv-listening-entry__preview"><audio controls preload="none" src="${escapeHtml(entry.previewUrl)}"></audio></div>` : '',
     links ? `<p class="lv-listening-entry__links">${links}</p>` : '',
     '</div>',
     '</div>'
@@ -281,7 +281,7 @@ export async function importCrucialTracks(config: SyncConfig, options: ImportCru
       continue;
     }
 
-    const ghostImageUrl = entry.artworkUrl ? await uploadGhostImageFromUrl(config, entry.artworkUrl, imageFilename(entry)) : null;
+    const ghostImageUrl = existing?.feature_image || (entry.artworkUrl ? await uploadGhostImageFromUrl(config, entry.artworkUrl, imageFilename(entry)) : null);
     const input = {
       slug,
       title: `${entry.title}${entry.artist ? ` — ${entry.artist}` : ''}`,
