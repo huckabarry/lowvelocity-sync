@@ -1,0 +1,75 @@
+name: Test Ghost ActivityPub note
+
+on:
+  workflow_dispatch:
+    inputs:
+      content:
+        description: Note text to send to Ghost Social Web
+        required: true
+        default: "Testing Ghost Social Web note publishing from lowvelocity-sync."
+      dry_run:
+        description: Test auth only; do not create a note
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-note:
+    name: Test Ghost ActivityPub note
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Call lowvelocity-sync ActivityPub note endpoint
+        env:
+          GHOST_WEBHOOK_SECRET: ${{ secrets.GHOST_WEBHOOK_SECRET }}
+          NOTE_CONTENT: ${{ inputs.content }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          status="$(
+            jq --null-input \
+              --arg content "${NOTE_CONTENT}" \
+              --argjson dryRun "${DRY_RUN}" \
+              '{content: $content, dryRun: $dryRun}' |
+            curl --silent --show-error \
+              --request POST \
+              --output "${response_file}" \
+              --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${GHOST_WEBHOOK_SECRET}" \
+              --header "Content-Type: application/json" \
+              --data-binary @- \
+              "https://sync.lowvelocity.org/admin/activitypub/test-note"
+          )"
+
+          echo "activitypub_note_status=${status}"
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+            cat "${response_file}"
+            exit 1
+          fi
+
+          node - "${response_file}" <<'NODE'
+          const fs = require('node:fs');
+          const file = process.argv[2];
+          const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+          console.log(`ok=${Boolean(json.ok)}`);
+          console.log(`dry_run=${Boolean(json.dryRun)}`);
+          if (json.note?.url) {
+            console.log(`note_url=${json.note.url}`);
+          }
+          if (json.error) {
+            console.log(`error=${json.error}`);
+          }
+          if (json.requestId) {
+            console.log(`request_id=${json.requestId}`);
+          }
+          if (!json.ok) {
+            process.exit(1);
+          }
+          NODE
