@@ -9,6 +9,7 @@ synchronization service for Low Velocity.
 - `GET /` — service metadata
 - `GET /health` — health check
 - `GET /.well-known/site.standard.publication` — canonical Standard.site publication AT-URI
+- `GET /updates/bluesky` — cached, normalized recent Bluesky updates for theme display
 - `POST /webhooks/ghost` — signed Ghost post synchronization webhook
 
 The Worker only handles its configured Cloudflare routes. All other

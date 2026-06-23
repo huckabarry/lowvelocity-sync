@@ -5,6 +5,7 @@ import test from 'node:test';
 import { verifyGhostSignature } from '../src/lib/server/crypto.ts';
 import { buildDocumentLinkInjection } from '../src/lib/server/ghost.ts';
 import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transform.ts';
+import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
@@ -50,4 +51,64 @@ test('verifies Ghost HMAC signatures and rejects modified payloads', async () =>
   assert.equal(await verifyGhostSignature(new TextEncoder().encode('changed'), header, secret, now), false);
   const bodyOnlyDigest = createHmac('sha256', secret).update(body).digest('hex');
   assert.equal(await verifyGhostSignature(body, `sha256=${bodyOnlyDigest}, t=${timestamp}`, secret, now), true);
+});
+
+test('normalizes authored Bluesky posts and preserves embeds', () => {
+  const update = normalizeBlueskyFeedItem({
+    post: {
+      uri: 'at://did:plc:test/app.bsky.feed.post/3abc',
+      cid: 'bafy',
+      author: { did: 'did:plc:test', handle: 'lowvelocity.org', displayName: 'Low Velocity' },
+      record: { text: 'A small update.', createdAt: '2026-06-23T12:00:00.000Z' },
+      embed: {
+        images: [{
+          fullsize: 'https://cdn.example/image.webp',
+          thumb: 'https://cdn.example/thumb.webp',
+          alt: 'Alt text',
+          aspectRatio: { width: 1200, height: 800 }
+        }],
+        external: {
+          uri: 'https://lowvelocity.org/post/',
+          title: 'A linked post',
+          description: 'Preview text.',
+          thumb: 'https://cdn.example/preview.webp'
+        }
+      },
+      likeCount: 1
+    }
+  }, 'did:plc:test');
+
+  assert.equal(update?.url, 'https://bsky.app/profile/lowvelocity.org/post/3abc');
+  assert.equal(update?.text, 'A small update.');
+  assert.equal(update?.counts.likes, 1);
+  assert.equal(update?.embeds.length, 2);
+  assert.equal(update?.embeds[0].type, 'image');
+  assert.equal(update?.embeds[1].type, 'external');
+});
+
+test('skips Bluesky reposts, replies, and other authors', () => {
+  assert.equal(normalizeBlueskyFeedItem({
+    reason: { $type: 'app.bsky.feed.defs#reasonRepost' },
+    post: {
+      uri: 'at://did:plc:test/app.bsky.feed.post/3abc',
+      author: { did: 'did:plc:test', handle: 'lowvelocity.org' },
+      record: { text: 'Repost', createdAt: '2026-06-23T12:00:00.000Z' }
+    }
+  }, 'did:plc:test'), null);
+
+  assert.equal(normalizeBlueskyFeedItem({
+    post: {
+      uri: 'at://did:plc:test/app.bsky.feed.post/3abc',
+      author: { did: 'did:plc:test', handle: 'lowvelocity.org' },
+      record: { text: 'Reply', createdAt: '2026-06-23T12:00:00.000Z', reply: {} }
+    }
+  }, 'did:plc:test'), null);
+
+  assert.equal(normalizeBlueskyFeedItem({
+    post: {
+      uri: 'at://did:plc:other/app.bsky.feed.post/3abc',
+      author: { did: 'did:plc:other', handle: 'someone.example' },
+      record: { text: 'Other author', createdAt: '2026-06-23T12:00:00.000Z' }
+    }
+  }, 'did:plc:test'), null);
 });
