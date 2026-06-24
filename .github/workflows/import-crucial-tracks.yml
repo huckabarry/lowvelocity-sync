@@ -1,13 +1,15 @@
 name: Import Crucial Tracks to Ghost
 
 on:
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
         description: Preview only; do not create or update Ghost posts
         required: true
         type: boolean
-        default: true
+        default: false
       update_existing:
         description: Update existing imported listening posts
         required: true
@@ -31,22 +33,24 @@ jobs:
       - name: Import in batches
         env:
           GHOST_STAFF_ACCESS_TOKEN: ${{ secrets.GHOST_STAFF_ACCESS_TOKEN }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          UPDATE_EXISTING: ${{ inputs.update_existing }}
-          BATCH_SIZE: ${{ inputs.batch_size }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          UPDATE_EXISTING_INPUT: ${{ inputs.update_existing }}
+          BATCH_SIZE_INPUT: ${{ inputs.batch_size }}
         shell: bash
         run: |
           set -euo pipefail
 
+          dry_run="${DRY_RUN_INPUT:-false}"
+          update_existing="${UPDATE_EXISTING_INPUT:-false}"
+          batch_size="${BATCH_SIZE_INPUT:-10}"
           offset=0
-          batch_size="${BATCH_SIZE:-10}"
 
           while true; do
             response_file="$(mktemp)"
             status="$(
               jq --null-input \
-                --argjson dryRun "${DRY_RUN}" \
-                --argjson updateExisting "${UPDATE_EXISTING}" \
+                --argjson dryRun "${dry_run}" \
+                --argjson updateExisting "${update_existing}" \
                 --argjson limit "${batch_size}" \
                 --argjson offset "${offset}" \
                 '{dryRun: $dryRun, updateExisting: $updateExisting, limit: $limit, offset: $offset}' |
