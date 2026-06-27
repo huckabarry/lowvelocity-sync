@@ -156,15 +156,38 @@ export async function findLatestGhostPostByTag(config: SyncConfig, tag: string):
   return body.posts?.[0] ?? null;
 }
 
+export async function readGhostPostsByTag(
+  config: SyncConfig,
+  tag: string,
+  options: { limit?: number; page?: number; order?: string } = {}
+): Promise<GhostPost[]> {
+  const url = new URL('/ghost/api/admin/posts/', config.ghostUrl);
+  url.searchParams.set('formats', 'html');
+  url.searchParams.set('include', 'tags');
+  url.searchParams.set('filter', `tag:${ghostTagFilterValue(tag)}+status:published`);
+  url.searchParams.set('order', options.order ?? 'published_at desc');
+  url.searchParams.set('limit', String(Math.max(1, Math.min(100, options.limit ?? 100))));
+  url.searchParams.set('page', String(Math.max(1, options.page ?? 1)));
+  const response = await fetch(url, { headers: await ghostHeaders(config) });
+  const body = await readJsonResponse<GhostPostsResponse>(response, 'Ghost Admin API');
+  return body.posts ?? [];
+}
+
 export interface GhostHtmlEntryInput {
   slug: string;
   title: string;
   html: string;
-  custom_excerpt?: string;
+  custom_excerpt?: string | null;
   feature_image?: string | null;
   published_at?: string;
   tags?: Array<{ name: string }>;
   status?: 'draft' | 'published';
+}
+
+export interface GhostPostFieldInput {
+  html?: string;
+  custom_excerpt?: string | null;
+  feature_image?: string | null;
 }
 
 export async function createGhostHtmlEntry(
@@ -198,6 +221,22 @@ export async function updateGhostHtmlEntry(
   });
   const body = await readJsonResponse<GhostPostsResponse & GhostPagesResponse>(response, 'Ghost Admin API');
   return assertGhostPost(type === 'pages' ? body.pages?.[0] : body.posts?.[0]);
+}
+
+export async function updateGhostPostFields(
+  config: SyncConfig,
+  existing: GhostPost,
+  input: GhostPostFieldInput
+): Promise<GhostPost> {
+  const url = new URL(`/ghost/api/admin/posts/${encodeURIComponent(existing.id)}/`, config.ghostUrl);
+  url.searchParams.set('source', 'html');
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: { ...(await ghostHeaders(config)), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ posts: [{ id: existing.id, updated_at: existing.updated_at, ...input }] })
+  });
+  const body = await readJsonResponse<GhostPostsResponse>(response, 'Ghost Admin API');
+  return assertGhostPost(body.posts?.[0]);
 }
 
 export async function uploadGhostImageFromUrl(config: SyncConfig, imageUrl: string, filename: string): Promise<string | null> {

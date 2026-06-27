@@ -50,11 +50,6 @@ function stripText(value: string): string {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
-function truncate(value: string, max: number): string {
-  const normalized = stripText(value);
-  return normalized.length > max ? `${normalized.slice(0, Math.max(0, max - 1)).trim()}…` : normalized;
-}
-
 function slugForUpdate(update: BlueskyUpdate): string {
   return `bsky-${blueskyPostRkey(update.uri)}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 180);
 }
@@ -143,7 +138,6 @@ function postHtml(update: BlueskyUpdate, embeds: BlueskyUpdateEmbed[]): string {
     embedHtml,
     '<p class="lv-atproto-source">',
     `<a href="${escapeHtml(update.url)}" rel="syndication external noopener">View on Bluesky</a>`,
-    `<span aria-hidden="true"> · </span><code>${escapeHtml(update.uri)}</code>`,
     '</p>',
     '</article>'
   ].filter(Boolean).join('\n');
@@ -153,13 +147,12 @@ export function ghostInputForBlueskyUpdate(
   update: BlueskyUpdate,
   embeds: BlueskyUpdateEmbed[] = update.embeds
 ) {
-  const images = embeds.filter((embed): embed is BlueskyUpdateImage => embed.type === 'image');
   return {
     slug: slugForUpdate(update),
     title: titleForUpdate(update),
     html: postHtml(update, embeds),
-    custom_excerpt: truncate(update.text, 300),
-    feature_image: images[0]?.url ?? null,
+    custom_excerpt: null,
+    feature_image: null,
     published_at: new Date(update.createdAt).toISOString(),
     tags: [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }],
     status: 'published' as const

@@ -7,6 +7,7 @@ import { buildDocumentLinkInjection, findLatestGhostPostByTag } from '../src/lib
 import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transform.ts';
 import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
+import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
@@ -133,11 +134,21 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   });
 
   assert.equal(input.slug, 'bsky-3mpbzshd77i2o');
-  assert.equal(input.feature_image, 'https://cdn.example/photo.jpg');
+  assert.equal(input.feature_image, null);
+  assert.equal(input.custom_excerpt, null);
   assert.deepEqual(input.tags, [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }]);
   assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
   assert.match(input.html, /View on Bluesky/);
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
+  assert.doesNotMatch(input.html, /<code>at:\/\//);
+});
+
+test('cleans visible ATProto URI from imported Bluesky HTML', () => {
+  const html = '<article data-atproto-uri="at://did:plc:test/app.bsky.feed.post/3abc"><p>Hello.</p><p class="lv-atproto-source"><a href="https://bsky.app/profile/example.test/post/3abc">View on Bluesky</a><span aria-hidden="true"> · </span><code>at://did:plc:test/app.bsky.feed.post/3abc</code></p></article>';
+  const cleaned = cleanBlueskyPostHtml(html);
+  assert.match(cleaned, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3abc"/);
+  assert.match(cleaned, /View on Bluesky/);
+  assert.doesNotMatch(cleaned, /<code>at:\/\//);
 });
 
 test('finds latest Ghost posts by public and internal tag slugs', async () => {

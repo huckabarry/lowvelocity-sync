@@ -1,0 +1,61 @@
+name: Cleanup Bluesky Ghost posts
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview only; do not update Ghost posts
+        required: true
+        type: boolean
+        default: true
+      page:
+        description: Ghost Admin API page to process
+        required: true
+        default: "1"
+      limit:
+        description: Number of posts to process
+        required: true
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cleanup Bluesky posts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call lowvelocity-sync Bluesky cleanup
+        env:
+          GHOST_STAFF_ACCESS_TOKEN: ${{ secrets.GHOST_STAFF_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          PAGE: ${{ inputs.page }}
+          LIMIT: ${{ inputs.limit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          status="$(
+            jq --null-input \
+              --argjson dryRun "${DRY_RUN}" \
+              --argjson page "${PAGE}" \
+              --argjson limit "${LIMIT}" \
+              '{dryRun: $dryRun, page: $page, limit: $limit}' |
+            curl --silent --show-error \
+              --request POST \
+              --output "${response_file}" \
+              --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data-binary @- \
+              "https://sync.lowvelocity.org/admin/cleanup/bluesky"
+          )"
+
+          echo "status=${status}"
+          cat "${response_file}" | jq '.'
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+            exit 1
+          fi
