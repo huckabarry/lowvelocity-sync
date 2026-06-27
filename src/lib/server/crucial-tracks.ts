@@ -219,7 +219,7 @@ export async function getCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
   return enriched.sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
 }
 
-function musicPostHtml(entry: CrucialTrackEntry, ghostImageUrl: string | null): string {
+function musicPostHtml(entry: CrucialTrackEntry): string {
   const links = [
     entry.previewUrl ? `<a href="${escapeHtml(entry.previewUrl)}" rel="noopener">Preview audio</a>` : '',
     entry.appleMusicUrl ? `<a href="${escapeHtml(entry.appleMusicUrl)}" rel="noopener">Apple Music</a>` : '',
@@ -230,7 +230,6 @@ function musicPostHtml(entry: CrucialTrackEntry, ghostImageUrl: string | null): 
 
   return [
     '<div class="lv-listening-entry">',
-    ghostImageUrl ? `<figure class="lv-listening-entry__art"><img src="${escapeHtml(ghostImageUrl)}" alt="${escapeHtml(entry.title)} album art"></figure>` : '',
     '<div class="lv-listening-entry__body">',
     '<p class="lv-listening-entry__eyebrow">Listening</p>',
     `<h2>${escapeHtml(entry.title)}</h2>`,
@@ -285,7 +284,7 @@ export async function importCrucialTracks(config: SyncConfig, options: ImportCru
     const input = {
       slug,
       title: `${entry.title}${entry.artist ? ` — ${entry.artist}` : ''}`,
-      html: musicPostHtml(entry, ghostImageUrl),
+      html: musicPostHtml(entry),
       custom_excerpt: customExcerpt(entry),
       feature_image: ghostImageUrl,
       published_at: new Date(entry.publishedAt).toISOString(),
