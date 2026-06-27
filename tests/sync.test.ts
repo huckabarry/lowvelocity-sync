@@ -138,17 +138,18 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.equal(input.custom_excerpt, null);
   assert.deepEqual(input.tags, [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }]);
   assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
-  assert.match(input.html, /View on Bluesky/);
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
+  assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
 });
 
-test('cleans visible ATProto URI from imported Bluesky HTML', () => {
+test('cleans visible Bluesky source block from imported Bluesky HTML', () => {
   const html = '<article data-atproto-uri="at://did:plc:test/app.bsky.feed.post/3abc"><p>Hello.</p><p class="lv-atproto-source"><a href="https://bsky.app/profile/example.test/post/3abc">View on Bluesky</a><span aria-hidden="true"> · </span><code>at://did:plc:test/app.bsky.feed.post/3abc</code></p></article>';
   const cleaned = cleanBlueskyPostHtml(html);
   assert.match(cleaned, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3abc"/);
-  assert.match(cleaned, /View on Bluesky/);
+  assert.doesNotMatch(cleaned, /View on Bluesky/);
   assert.doesNotMatch(cleaned, /<code>at:\/\//);
+  assert.doesNotMatch(cleaned, /lv-atproto-source/);
 });
 
 test('finds latest Ghost posts by public and internal tag slugs', async () => {

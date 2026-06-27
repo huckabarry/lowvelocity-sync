@@ -136,9 +136,6 @@ function postHtml(update: BlueskyUpdate, embeds: BlueskyUpdateEmbed[]): string {
     `<article class="lv-atproto-note" data-atproto-uri="${escapeHtml(update.uri)}"${update.cid ? ` data-atproto-cid="${escapeHtml(update.cid)}"` : ''}>`,
     textHtml(update.text),
     embedHtml,
-    '<p class="lv-atproto-source">',
-    `<a href="${escapeHtml(update.url)}" rel="syndication external noopener">View on Bluesky</a>`,
-    '</p>',
     '</article>'
   ].filter(Boolean).join('\n');
 }
