@@ -155,6 +155,30 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
       alt: 'A short video',
       width: 1280,
       height: 720
+    }, {
+      type: 'quote',
+      uri: 'at://did:plc:quote/app.bsky.feed.post/3quote',
+      cid: 'bafyquote',
+      author: {
+        did: 'did:plc:quote',
+        handle: 'quoted.example',
+        displayName: 'Quoted Person'
+      },
+      text: 'A quoted post with media.',
+      createdAt: '2026-06-27T17:40:00.000Z',
+      embeds: [{
+        type: 'image',
+        url: 'https://cdn.example/quote-photo.jpg',
+        alt: 'Quoted photo',
+        width: 900,
+        height: 600
+      }, {
+        type: 'external',
+        uri: 'https://example.com/quoted-article',
+        title: 'Quoted article',
+        description: 'Quoted article description',
+        thumb: 'https://cdn.example/quoted-article.jpg'
+      }]
     }]
   });
 
@@ -168,6 +192,10 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.match(input.html, /class="kg-bookmark-thumbnail"><img src="https:\/\/cdn\.example\/article\.jpg"/);
   assert.match(input.html, /class="kg-image status-external-gif" src="https:\/\/media\.example\/animated\.gif"/);
   assert.match(input.html, /class="kg-card kg-video-card lv-atproto-video status-video"/);
+  assert.match(input.html, /<blockquote cite="https:\/\/bsky\.app\/profile\/quoted\.example\/post\/3quote" class="lv-atproto-quote">/);
+  assert.match(input.html, /Quoted Person/);
+  assert.match(input.html, /https:\/\/cdn\.example\/quote-photo\.jpg/);
+  assert.match(input.html, /https:\/\/cdn\.example\/quoted-article\.jpg/);
   assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
 });

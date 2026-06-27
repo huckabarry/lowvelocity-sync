@@ -154,17 +154,28 @@ function videoHtml(video: BlueskyUpdateVideo): string {
   ].filter(Boolean).join('\n');
 }
 
+function renderEmbedHtml(embed: BlueskyUpdateEmbed): string {
+  if (embed.type === 'image') return imageHtml(embed);
+  if (embed.type === 'external') return externalHtml(embed);
+  if (embed.type === 'video') return videoHtml(embed);
+  return quoteHtml(embed);
+}
+
 function quoteHtml(quote: BlueskyUpdateQuote): string {
   const author = quote.author?.displayName || quote.author?.handle || 'Bluesky post';
   const rkey = quote.uri.split('/').at(-1) ?? quote.uri;
   const handle = quote.author?.handle;
   const url = handle ? `https://bsky.app/profile/${encodeURIComponent(handle)}/post/${encodeURIComponent(rkey)}` : '';
   const content = quote.text ? textHtml(quote.text) : '';
+  const embedHtml = (quote.embeds ?? []).map(renderEmbedHtml).join('\n');
+  const authorHtml = url
+    ? `<strong><a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(author)}</a></strong>`
+    : `<strong>${escapeHtml(author)}</strong>`;
   return [
-    `<blockquote class="lv-atproto-quote" cite="${escapeHtml(url || quote.uri)}">`,
-    `<p><strong>${escapeHtml(author)}</strong></p>`,
+    `<blockquote cite="${escapeHtml(url || quote.uri)}" class="lv-atproto-quote">`,
+    `<p>${authorHtml}</p>`,
     content,
-    url ? `<p><a href="${escapeHtml(url)}" rel="noopener">View quoted post</a></p>` : '',
+    embedHtml,
     '</blockquote>'
   ].filter(Boolean).join('\n');
 }
@@ -180,50 +191,52 @@ async function withUploadedImages(
   let externalIndex = 0;
   let videoIndex = 0;
 
-  for (const embed of update.embeds) {
+  async function uploadEmbed(embed: BlueskyUpdateEmbed): Promise<BlueskyUpdateEmbed> {
     if (embed.type === 'image') {
       const uploaded = await tryUploadGhostImageFromUrl(config, embed.url, imageFilename(update, imageIndex));
-      embeds.push({ ...embed, url: uploaded ?? embed.url });
       imageIndex += 1;
-      continue;
+      return { ...embed, url: uploaded ?? embed.url };
     }
 
     if (embed.type === 'external') {
       const externalImageUrl = isAnimatedGifExternal(embed) ? embed.uri : embed.thumb;
       if (!externalImageUrl) {
-        embeds.push(embed);
-        continue;
+        return embed;
       }
       const uploaded = await tryUploadGhostImageFromUrl(config, externalImageUrl, externalImageFilename(update, externalIndex, externalImageUrl));
-      embeds.push({ ...embed, thumb: uploaded ?? embed.thumb ?? (isAnimatedGifExternal(embed) ? embed.uri : undefined) });
       externalIndex += 1;
-      continue;
+      return { ...embed, thumb: uploaded ?? embed.thumb ?? (isAnimatedGifExternal(embed) ? embed.uri : undefined) };
     }
 
     if (embed.type === 'video') {
       if (!embed.thumbnail) {
-        embeds.push(embed);
-        continue;
+        return embed;
       }
       const uploaded = await tryUploadGhostImageFromUrl(config, embed.thumbnail, videoPosterFilename(update, videoIndex));
-      embeds.push({ ...embed, thumbnail: uploaded ?? embed.thumbnail });
       videoIndex += 1;
-      continue;
+      return { ...embed, thumbnail: uploaded ?? embed.thumbnail };
     }
 
-    embeds.push(embed);
+    if (embed.type === 'quote') {
+      const quoteEmbeds = [];
+      for (const nested of embed.embeds ?? []) {
+        quoteEmbeds.push(await uploadEmbed(nested));
+      }
+      return { ...embed, embeds: quoteEmbeds };
+    }
+
+    return embed;
+  }
+
+  for (const embed of update.embeds) {
+    embeds.push(await uploadEmbed(embed));
   }
 
   return embeds;
 }
 
 function postHtml(update: BlueskyUpdate, embeds: BlueskyUpdateEmbed[]): string {
-  const embedHtml = embeds.map((embed) => {
-    if (embed.type === 'image') return imageHtml(embed);
-    if (embed.type === 'external') return externalHtml(embed);
-    if (embed.type === 'video') return videoHtml(embed);
-    return quoteHtml(embed);
-  }).join('\n');
+  const embedHtml = embeds.map(renderEmbedHtml).join('\n');
 
   return [
     `<article class="lv-atproto-note" data-atproto-uri="${escapeHtml(update.uri)}"${update.cid ? ` data-atproto-cid="${escapeHtml(update.cid)}"` : ''}>`,
