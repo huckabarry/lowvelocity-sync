@@ -71,6 +71,34 @@ interface BlueskyAuthorFeedResponse {
   cursor?: string;
 }
 
+interface BlueskyPostView {
+  uri?: string;
+  cid?: string;
+  author?: BlueskyAuthor;
+  record?: BlueskyPostRecord;
+  embed?: BlueskyEmbedView;
+  likeCount?: number;
+  replyCount?: number;
+  repostCount?: number;
+  quoteCount?: number;
+}
+
+interface BlueskyThreadViewPost {
+  $type?: string;
+  post?: BlueskyPostView;
+  replies?: BlueskyThreadNode[];
+}
+
+type BlueskyThreadNode = BlueskyThreadViewPost | { $type?: string; [key: string]: unknown };
+
+interface BlueskyPostThreadResponse {
+  thread?: BlueskyThreadNode;
+}
+
+interface BlueskyQuotesResponse {
+  posts?: BlueskyPostView[];
+}
+
 export interface BlueskyUpdateImage {
   type: 'image';
   url: string;
@@ -134,6 +162,19 @@ export interface BlueskyUpdatesResponse {
   fetchedAt: string;
   limit: number;
   items: BlueskyUpdate[];
+}
+
+export interface BlueskyThreadSummary {
+  source: {
+    did: string;
+    handle: string;
+  };
+  fetchedAt: string;
+  uri: string;
+  post: BlueskyUpdate;
+  counts: BlueskyUpdate['counts'];
+  replies: BlueskyUpdate[];
+  quotes: BlueskyUpdate[];
 }
 
 export function blueskyPostUrl(handle: string, uri: string): string {
@@ -225,6 +266,101 @@ export function normalizeBlueskyFeedItem(item: BlueskyFeedItem, expectedDid: str
       quotes: post.quoteCount ?? 0
     },
     embeds: normalizeEmbeds(post.embed)
+  };
+}
+
+function normalizeBlueskyPostView(post: BlueskyPostView | undefined): BlueskyUpdate | null {
+  const author = post?.author;
+  const record = post?.record;
+  if (!post?.uri || !record?.createdAt || !author?.did || !author.handle) return null;
+  return {
+    uri: post.uri,
+    cid: post.cid,
+    url: blueskyPostUrl(author.handle, post.uri),
+    text: record.text ?? '',
+    createdAt: record.createdAt,
+    author: {
+      did: author.did,
+      handle: author.handle,
+      displayName: author.displayName,
+      avatar: author.avatar
+    },
+    counts: {
+      likes: post.likeCount ?? 0,
+      replies: post.replyCount ?? 0,
+      reposts: post.repostCount ?? 0,
+      quotes: post.quoteCount ?? 0
+    },
+    embeds: normalizeEmbeds(post.embed)
+  };
+}
+
+function isThreadViewPost(node: BlueskyThreadNode | undefined): node is BlueskyThreadViewPost {
+  return node?.$type === 'app.bsky.feed.defs#threadViewPost';
+}
+
+function normalizeThreadReplies(node: BlueskyThreadNode | undefined, limit: number): BlueskyUpdate[] {
+  if (!isThreadViewPost(node) || !Array.isArray(node.replies)) return [];
+  const replies: BlueskyUpdate[] = [];
+  for (const reply of node.replies) {
+    if (!isThreadViewPost(reply)) continue;
+    const normalized = normalizeBlueskyPostView(reply.post);
+    if (normalized) replies.push(normalized);
+    if (replies.length >= limit) break;
+  }
+  return replies;
+}
+
+function assertBlueskyPostUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!/^at:\/\/did:[a-z0-9:.-]+\/app\.bsky\.feed\.post\/[a-z0-9-]+$/i.test(trimmed)) {
+    throw new Error('Invalid Bluesky post URI');
+  }
+  return trimmed;
+}
+
+export function blueskyPostUriFromRkey(did: string, rkey: string): string {
+  const trimmed = rkey.trim();
+  if (!/^[a-z0-9-]+$/i.test(trimmed)) throw new Error('Invalid Bluesky post rkey');
+  return `at://${did}/app.bsky.feed.post/${trimmed}`;
+}
+
+export async function readBlueskyThreadSummary(config: SyncConfig, uri: string): Promise<BlueskyThreadSummary> {
+  const postUri = assertBlueskyPostUri(uri);
+  const threadUrl = new URL('/xrpc/app.bsky.feed.getPostThread', 'https://public.api.bsky.app');
+  threadUrl.searchParams.set('uri', postUri);
+  threadUrl.searchParams.set('depth', '2');
+  threadUrl.searchParams.set('parentHeight', '0');
+
+  const threadResponse = await fetch(threadUrl);
+  const threadBody = await readJsonResponse<BlueskyPostThreadResponse>(threadResponse, 'Bluesky public API');
+  const thread = threadBody.thread;
+  if (!isThreadViewPost(thread)) throw new Error('Bluesky did not return a visible thread');
+
+  const post = normalizeBlueskyPostView(thread.post);
+  if (!post) throw new Error('Bluesky returned an incomplete post');
+
+  let quotes: BlueskyUpdate[] = [];
+  if (post.counts.quotes > 0) {
+    const quotesUrl = new URL('/xrpc/app.bsky.feed.getQuotes', 'https://public.api.bsky.app');
+    quotesUrl.searchParams.set('uri', postUri);
+    quotesUrl.searchParams.set('limit', '8');
+    const quotesResponse = await fetch(quotesUrl);
+    const quotesBody = await readJsonResponse<BlueskyQuotesResponse>(quotesResponse, 'Bluesky public API');
+    quotes = (quotesBody.posts ?? []).map(normalizeBlueskyPostView).filter((quote): quote is BlueskyUpdate => Boolean(quote));
+  }
+
+  return {
+    source: {
+      did: config.blueskyUpdatesDid,
+      handle: config.blueskyUpdatesIdentifier
+    },
+    fetchedAt: new Date().toISOString(),
+    uri: postUri,
+    post,
+    counts: post.counts,
+    replies: normalizeThreadReplies(thread, 12),
+    quotes
   };
 }
 
