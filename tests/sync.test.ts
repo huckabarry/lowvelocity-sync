@@ -258,7 +258,15 @@ test('builds Foursquare OAuth authorization URL with the lowvelocity callback', 
   assert.equal(url.searchParams.get('client_id'), 'client-id');
   assert.equal(url.searchParams.get('response_type'), 'code');
   assert.equal(url.searchParams.get('redirect_uri'), 'https://sync.lowvelocity.org/admin/checkins/callback');
-  assert.ok(url.searchParams.get('state'));
+  assert.equal(url.searchParams.get('state'), null);
+});
+
+test('can build Foursquare token fallback URL', async () => {
+  const url = new URL(await buildFoursquareAuthorizationUrl(baseConfig, new URL('https://sync.lowvelocity.org/admin/checkins/connect'), { responseType: 'token' }));
+  assert.equal(url.origin + url.pathname, 'https://foursquare.com/oauth2/authenticate');
+  assert.equal(url.searchParams.get('client_id'), 'client-id');
+  assert.equal(url.searchParams.get('response_type'), 'token');
+  assert.equal(url.searchParams.get('redirect_uri'), 'https://sync.lowvelocity.org/admin/checkins/callback');
 });
 
 test('validates Foursquare OAuth state for the same callback only', async () => {

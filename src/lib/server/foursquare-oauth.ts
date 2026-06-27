@@ -59,14 +59,20 @@ export async function verifyFoursquareOAuthState(config: SyncConfig, state: stri
   return signature === expected;
 }
 
-export async function buildFoursquareAuthorizationUrl(config: SyncConfig, requestUrl: URL): Promise<string> {
+export async function buildFoursquareAuthorizationUrl(
+  config: SyncConfig,
+  requestUrl: URL,
+  options: { responseType?: 'code' | 'token'; includeState?: boolean } = {}
+): Promise<string> {
   const { clientId } = requireFoursquareOAuthConfig(config);
   const redirectUri = foursquareRedirectUri(requestUrl);
   const url = new URL(FOURSQUARE_AUTH_URL);
   url.searchParams.set('client_id', clientId);
-  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('response_type', options.responseType ?? 'code');
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('state', await createFoursquareOAuthState(config, redirectUri));
+  if (options.includeState) {
+    url.searchParams.set('state', await createFoursquareOAuthState(config, redirectUri));
+  }
   return url.toString();
 }
 
@@ -99,4 +105,3 @@ export async function exchangeFoursquareCodeForAccessToken(config: SyncConfig, c
 
   return payload.access_token;
 }
-
