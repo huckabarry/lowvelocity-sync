@@ -90,6 +90,16 @@ function appleTrackId(url: string | null): string | null {
   }
 }
 
+function appleCollectionId(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.match(/\/(\d+)$/)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
 function parseFrontmatterMarkdown(source: string): { data: Record<string, string>; content: string } {
   const match = String(source || '').match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) return { data: {}, content: source };
@@ -191,27 +201,49 @@ async function fetchArchiveEntries(): Promise<CrucialTrackEntry[]> {
   }
 }
 
+type AppleLookupResult = {
+  artworkUrl100?: string;
+  collectionName?: string;
+  collectionCensoredName?: string;
+  previewUrl?: string;
+  trackViewUrl?: string;
+  collectionViewUrl?: string;
+};
+
+async function lookupAppleById(id: string, label: string): Promise<AppleLookupResult | null> {
+  try {
+    const data = await readJson<{ results?: AppleLookupResult[] }>(
+      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}`,
+      label
+    );
+    return data.results?.[0] ?? null;
+  } catch (error) {
+    console.warn(`${label} failed`, error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
 async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEntry> {
   if (entry.artworkUrl && entry.previewUrl && entry.albumTitle) return entry;
-  const id = appleTrackId(entry.appleMusicUrl);
-  if (!id) return entry;
-  try {
-    const data = await readJson<{ results?: Array<{ artworkUrl100?: string; collectionName?: string; previewUrl?: string; trackViewUrl?: string }> }>(
-      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}`,
-      'Apple Music lookup'
-    );
-    const result = data.results?.[0];
-    const artworkUrl = result?.artworkUrl100?.replace(/\/100x100bb\.(jpg|png|webp)$/i, '/600x600bb.$1') ?? entry.artworkUrl;
-    return {
-      ...entry,
-      albumTitle: entry.albumTitle || result?.collectionName || null,
-      artworkUrl,
-      previewUrl: entry.previewUrl || result?.previewUrl || null,
-      appleMusicUrl: entry.appleMusicUrl || result?.trackViewUrl || null
-    };
-  } catch {
-    return entry;
-  }
+  const trackId = appleTrackId(entry.appleMusicUrl);
+  const collectionId = appleCollectionId(entry.appleMusicUrl);
+  if (!trackId && !collectionId) return entry;
+
+  const trackResult = trackId ? await lookupAppleById(trackId, 'Apple Music track lookup') : null;
+  const collectionResult = !trackResult?.collectionName && collectionId && collectionId !== trackId
+    ? await lookupAppleById(collectionId, 'Apple Music collection lookup')
+    : null;
+  const result = trackResult ?? collectionResult;
+  const albumResult = collectionResult ?? trackResult;
+  const artworkUrl = result?.artworkUrl100?.replace(/\/100x100bb\.(jpg|png|webp)$/i, '/600x600bb.$1') ?? entry.artworkUrl;
+
+  return {
+    ...entry,
+    albumTitle: entry.albumTitle || albumResult?.collectionName || albumResult?.collectionCensoredName || null,
+    artworkUrl,
+    previewUrl: entry.previewUrl || trackResult?.previewUrl || null,
+    appleMusicUrl: entry.appleMusicUrl || trackResult?.trackViewUrl || collectionResult?.collectionViewUrl || null
+  };
 }
 
 async function getMergedCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
