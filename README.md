@@ -10,6 +10,8 @@ synchronization service for Low Velocity.
 - `GET /health` — health check
 - `GET /.well-known/site.standard.publication` — canonical Standard.site publication AT-URI
 - `GET /updates/bluesky` — cached, normalized recent Bluesky updates for theme display. This can use a different Bluesky identity than the Standard.site publishing account.
+- `GET /admin/checkins/connect` — starts the Foursquare OAuth flow and redirects to Foursquare.
+- `GET /admin/checkins/callback` — receives the Foursquare OAuth code and returns an access token to save as a Cloudflare secret.
 - `POST /admin/import/checkins` — protected manual import of Swarm/Foursquare check-ins as native Ghost posts.
 - `POST /webhooks/ghost` — signed Ghost post synchronization webhook
 
@@ -39,7 +41,15 @@ Required secrets:
 npx wrangler secret put GHOST_ADMIN_API_KEY
 npx wrangler secret put GHOST_WEBHOOK_SECRET
 npx wrangler secret put ATPROTO_APP_PASSWORD
+npx wrangler secret put FOURSQUARE_CLIENT_ID
+npx wrangler secret put FOURSQUARE_CLIENT_SECRET
 npx wrangler secret put FOURSQUARE_ACCESS_TOKEN
+```
+
+The Foursquare developer console redirect URL should be:
+
+```txt
+https://sync.lowvelocity.org/admin/checkins/callback
 ```
 
 Configure four Ghost webhooks with the same target URL and secret:

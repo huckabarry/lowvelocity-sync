@@ -9,6 +9,25 @@ import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
+import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
+import type { SyncConfig } from '../src/lib/server/config.ts';
+
+const baseConfig: SyncConfig = {
+  ghostUrl: 'https://lowvelocity.org',
+  ghostAdminApiKey: 'id:0123456789abcdef',
+  ghostStaffAccessToken: 'staff-token',
+  ghostWebhookSecret: 'webhook-secret',
+  atprotoService: 'https://bsky.social',
+  atprotoIdentifier: 'lowvelocity.org',
+  atprotoDid: 'did:plc:test',
+  blueskyUpdatesIdentifier: 'bryan.eurosky.social',
+  blueskyUpdatesDid: 'did:plc:updates',
+  foursquareClientId: 'client-id',
+  foursquareClientSecret: 'client-secret',
+  atprotoAppPassword: 'app-password',
+  publicationUri: 'at://did:plc:test/site.standard.publication/self',
+  standardSiteSyncEnabled: true
+};
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
@@ -231,6 +250,23 @@ test('builds idempotent native Ghost input for Swarm check-ins', () => {
   assert.match(input.html, /data-checkin-id="abc123"/);
   assert.match(input.html, /Great noodles by the river\./);
   assert.match(input.html, /https:\/\/fastly\.example\/photo\/original\.jpg/);
+});
+
+test('builds Foursquare OAuth authorization URL with the lowvelocity callback', async () => {
+  const url = new URL(await buildFoursquareAuthorizationUrl(baseConfig, new URL('https://sync.lowvelocity.org/admin/checkins/connect')));
+  assert.equal(url.origin + url.pathname, 'https://foursquare.com/oauth2/authenticate');
+  assert.equal(url.searchParams.get('client_id'), 'client-id');
+  assert.equal(url.searchParams.get('response_type'), 'code');
+  assert.equal(url.searchParams.get('redirect_uri'), 'https://sync.lowvelocity.org/admin/checkins/callback');
+  assert.ok(url.searchParams.get('state'));
+});
+
+test('validates Foursquare OAuth state for the same callback only', async () => {
+  const redirectUri = 'https://sync.lowvelocity.org/admin/checkins/callback';
+  const state = await createFoursquareOAuthState(baseConfig, redirectUri, 1782608400000);
+  assert.equal(await verifyFoursquareOAuthState(baseConfig, state, redirectUri, 1782608400000), true);
+  assert.equal(await verifyFoursquareOAuthState(baseConfig, state, 'https://sync.afterword.blog/admin/checkins/callback', 1782608400000), false);
+  assert.equal(await verifyFoursquareOAuthState(baseConfig, state, redirectUri, 1782608400000 + 16 * 60 * 1000), false);
 });
 
 test('cleans visible Bluesky source block from imported Bluesky HTML', () => {
