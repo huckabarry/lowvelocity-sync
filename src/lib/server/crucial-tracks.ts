@@ -373,7 +373,7 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
     entry.sourceUrl ? `<a href="${escapeHtml(entry.sourceUrl)}" rel="noopener">Crucial Tracks</a>` : ''
   ].filter(Boolean).join('');
   const albumHeading = entry.albumTitle
-    ? `${escapeHtml(entry.albumTitle)}${entry.albumReleaseYear ? ` <span class="lv-listening-entry__year">(${escapeHtml(entry.albumReleaseYear)})</span>` : ''}`
+    ? `${escapeHtml(entry.albumTitle)}${entry.albumReleaseYear ? ` <small>(${escapeHtml(entry.albumReleaseYear)})</small>` : ''}`
     : '';
 
   return [
