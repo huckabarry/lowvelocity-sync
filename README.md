@@ -10,6 +10,7 @@ synchronization service for Low Velocity.
 - `GET /health` — health check
 - `GET /.well-known/site.standard.publication` — canonical Standard.site publication AT-URI
 - `GET /updates/bluesky` — cached, normalized recent Bluesky updates for theme display. This can use a different Bluesky identity than the Standard.site publishing account.
+- `POST /admin/import/checkins` — protected manual import of Swarm/Foursquare check-ins as native Ghost posts.
 - `POST /webhooks/ghost` — signed Ghost post synchronization webhook
 
 The Worker only handles its configured Cloudflare routes. All other
@@ -38,6 +39,7 @@ Required secrets:
 npx wrangler secret put GHOST_ADMIN_API_KEY
 npx wrangler secret put GHOST_WEBHOOK_SECRET
 npx wrangler secret put ATPROTO_APP_PASSWORD
+npx wrangler secret put FOURSQUARE_ACCESS_TOKEN
 ```
 
 Configure four Ghost webhooks with the same target URL and secret:

@@ -8,6 +8,7 @@ import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transfor
 import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
+import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
@@ -141,6 +142,39 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
   assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
+});
+
+test('builds idempotent native Ghost input for Swarm check-ins', () => {
+  const input = ghostInputForSwarmCheckin({
+    id: 'abc123',
+    createdAt: 1782608400,
+    shout: 'Great noodles by the river.',
+    venue: {
+      id: 'venue123',
+      name: 'Kizuki Ramen',
+      location: {
+        address: '123 Main St',
+        city: 'Portland',
+        state: 'OR',
+        country: 'United States',
+        lat: 45.52,
+        lng: -122.67
+      },
+      categories: [{ name: 'Ramen Restaurant', primary: true }]
+    },
+    photos: {
+      items: [{ prefix: 'https://fastly.example/photo/', suffix: '.jpg' }]
+    }
+  });
+
+  assert.equal(input.slug, 'checkin-kizuki-ramen-abc123');
+  assert.equal(input.title, 'Checked in at Kizuki Ramen');
+  assert.equal(input.feature_image, null);
+  assert.deepEqual(input.tags, [{ name: 'check-ins' }, { name: '#swarm' }, { name: '#foursquare' }]);
+  assert.match(input.html, /data-checkin-source="swarm"/);
+  assert.match(input.html, /data-checkin-id="abc123"/);
+  assert.match(input.html, /Great noodles by the river\./);
+  assert.match(input.html, /https:\/\/fastly\.example\/photo\/original\.jpg/);
 });
 
 test('cleans visible Bluesky source block from imported Bluesky HTML', () => {

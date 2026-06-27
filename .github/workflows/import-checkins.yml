@@ -1,0 +1,109 @@
+name: Import Check-ins to Ghost
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview only; do not create or update Ghost posts
+        required: true
+        type: boolean
+        default: true
+      update_existing:
+        description: Update existing imported check-in posts
+        required: true
+        type: boolean
+        default: false
+      upload_images:
+        description: Upload Swarm/Foursquare images into Ghost
+        required: true
+        type: boolean
+        default: true
+      limit:
+        description: Maximum check-ins to process
+        required: true
+        default: "25"
+      offset:
+        description: Foursquare check-in offset for backfills
+        required: true
+        default: "0"
+      max_pages:
+        description: Maximum Foursquare API pages to scan
+        required: true
+        default: "5"
+      since:
+        description: Optional ISO date/time cutoff, inclusive
+        required: false
+        default: ""
+      since_tag:
+        description: Use newest Ghost post with this tag as cutoff when since is blank
+        required: false
+        default: ""
+      until:
+        description: Optional ISO date/time upper cutoff, inclusive
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    name: Import Check-ins
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Call lowvelocity-sync check-ins importer
+        env:
+          GHOST_STAFF_ACCESS_TOKEN: ${{ secrets.GHOST_STAFF_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          UPDATE_EXISTING: ${{ inputs.update_existing }}
+          UPLOAD_IMAGES: ${{ inputs.upload_images }}
+          LIMIT: ${{ inputs.limit }}
+          OFFSET: ${{ inputs.offset }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          SINCE: ${{ inputs.since }}
+          SINCE_TAG: ${{ inputs.since_tag }}
+          UNTIL: ${{ inputs.until }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          status="$(
+            jq --null-input \
+              --argjson dryRun "${DRY_RUN}" \
+              --argjson updateExisting "${UPDATE_EXISTING}" \
+              --argjson uploadImages "${UPLOAD_IMAGES}" \
+              --argjson limit "${LIMIT}" \
+              --argjson offset "${OFFSET}" \
+              --argjson maxPages "${MAX_PAGES}" \
+              --arg since "${SINCE}" \
+              --arg sinceTag "${SINCE_TAG}" \
+              --arg until "${UNTIL}" \
+              '{
+                dryRun: $dryRun,
+                updateExisting: $updateExisting,
+                uploadImages: $uploadImages,
+                limit: $limit,
+                offset: $offset,
+                maxPages: $maxPages
+              }
+              + (if $since == "" then {} else {since: $since} end)
+              + (if $since != "" or $sinceTag == "" then {} else {sinceTag: $sinceTag} end)
+              + (if $until == "" then {} else {until: $until} end)' |
+            curl --silent --show-error \
+              --request POST \
+              --output "${response_file}" \
+              --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data-binary @- \
+              "https://sync.lowvelocity.org/admin/import/checkins"
+          )"
+
+          echo "status=${status}"
+          cat "${response_file}" | jq '.'
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+            exit 1
+          fi

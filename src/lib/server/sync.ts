@@ -7,7 +7,9 @@ import { ghostPostToDocument } from './transform.ts';
 const STANDARD_SITE_EXCLUDED_TAGS = new Set([
   '#crucialtracks',
   '#bluesky',
-  '#atproto'
+  '#atproto',
+  '#swarm',
+  '#foursquare'
 ]);
 
 function standardSiteExclusionReason(tags: Array<{ name?: string }> | undefined): string | null {

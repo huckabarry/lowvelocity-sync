@@ -8,6 +8,7 @@ export interface SyncConfig {
   atprotoDid: string;
   blueskyUpdatesIdentifier: string;
   blueskyUpdatesDid: string;
+  foursquareAccessToken?: string;
   atprotoAppPassword: string;
   publicationUri: string;
   standardSiteSyncEnabled: boolean;
@@ -41,6 +42,7 @@ export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
     atprotoDid,
     blueskyUpdatesIdentifier: optional(platform.env, 'BLUESKY_UPDATES_IDENTIFIER') ?? atprotoIdentifier,
     blueskyUpdatesDid: optional(platform.env, 'BLUESKY_UPDATES_DID') ?? atprotoDid,
+    foursquareAccessToken: optional(platform.env, 'FOURSQUARE_ACCESS_TOKEN') ?? optional(platform.env, 'SWARM_ACCESS_TOKEN'),
     atprotoAppPassword: required(platform.env, 'ATPROTO_APP_PASSWORD'),
     publicationUri: required(platform.env, 'PUBLICATION_URI'),
     standardSiteSyncEnabled: optional(platform.env, 'STANDARD_SITE_SYNC_ENABLED') !== 'false'
@@ -54,6 +56,7 @@ export function configurationStatus(platform: App.Platform | undefined) {
     ghostActivityPub: Boolean(env?.GHOST_URL && env?.GHOST_STAFF_ACCESS_TOKEN),
     atproto: Boolean(env?.ATPROTO_SERVICE && env?.ATPROTO_IDENTIFIER && env?.ATPROTO_DID && env?.ATPROTO_APP_PASSWORD && env?.PUBLICATION_URI),
     blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID),
+    checkins: Boolean(env?.FOURSQUARE_ACCESS_TOKEN || env?.SWARM_ACCESS_TOKEN),
     standardSiteSyncEnabled: env?.STANDARD_SITE_SYNC_ENABLED !== 'false'
   };
 }
