@@ -111,23 +111,27 @@ function imageHtml(image: BlueskyUpdateImage): string {
 function externalHtml(external: BlueskyUpdateExternal): string {
   if (isAnimatedGifExternal(external)) {
     return [
-      `<a class="lv-atproto-card status-external status-external-animated" href="${escapeHtml(external.uri)}" rel="noopener">`,
-      `<img class="status-external-gif" src="${escapeHtml(external.thumb || external.uri)}" alt="${escapeHtml(external.description || external.title || '')}" loading="lazy">`,
-      external.title ? `<span class="status-external-gif-caption">${escapeHtml(external.title)}</span>` : '',
-      '</a>'
+      '<figure class="kg-card kg-image-card lv-atproto-gif">',
+      `<img class="kg-image status-external-gif" src="${escapeHtml(external.thumb || external.uri)}" alt="${escapeHtml(external.description || external.title || '')}" loading="lazy">`,
+      external.title || external.uri ? `<figcaption><a href="${escapeHtml(external.uri)}" rel="noopener">${escapeHtml(external.title || external.uri)}</a></figcaption>` : '',
+      '</figure>'
     ].filter(Boolean).join('\n');
   }
 
   return [
-    `<a class="lv-atproto-card status-external" href="${escapeHtml(external.uri)}" rel="noopener">`,
-    external.thumb ? `<img class="status-external-thumb" src="${escapeHtml(external.thumb)}" alt="" loading="lazy">` : '',
-    '<span class="status-external-details">',
-    `<span class="status-external-domain">${escapeHtml(externalDomain(external.uri))}</span>`,
-    external.title ? `<strong>${escapeHtml(external.title)}</strong>` : escapeHtml(external.uri),
-    external.description ? `<span class="status-external-description">${escapeHtml(external.description)}</span>` : '',
-    '</span>',
-    '</a>'
-  ].join('\n');
+    '<figure class="kg-card kg-bookmark-card lv-atproto-card">',
+    `<a class="kg-bookmark-container" href="${escapeHtml(external.uri)}" rel="noopener">`,
+    '<div class="kg-bookmark-content">',
+    `<div class="kg-bookmark-title">${external.title ? escapeHtml(external.title) : escapeHtml(external.uri)}</div>`,
+    external.description ? `<div class="kg-bookmark-description">${escapeHtml(external.description)}</div>` : '',
+    '<div class="kg-bookmark-metadata">',
+    `<span class="kg-bookmark-publisher">${escapeHtml(externalDomain(external.uri))}</span>`,
+    '</div>',
+    '</div>',
+    external.thumb ? `<div class="kg-bookmark-thumbnail"><img src="${escapeHtml(external.thumb)}" alt="" loading="lazy"></div>` : '',
+    '</a>',
+    '</figure>'
+  ].filter(Boolean).join('\n');
 }
 
 function externalDomain(uri: string): string {

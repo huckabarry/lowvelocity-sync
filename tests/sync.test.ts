@@ -164,9 +164,9 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.deepEqual(input.tags, [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }]);
   assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
-  assert.match(input.html, /class="lv-atproto-card status-external"/);
-  assert.match(input.html, /class="status-external-thumb" src="https:\/\/cdn\.example\/article\.jpg"/);
-  assert.match(input.html, /class="status-external-gif" src="https:\/\/media\.example\/animated\.gif"/);
+  assert.match(input.html, /class="kg-card kg-bookmark-card lv-atproto-card"/);
+  assert.match(input.html, /class="kg-bookmark-thumbnail"><img src="https:\/\/cdn\.example\/article\.jpg"/);
+  assert.match(input.html, /class="kg-image status-external-gif" src="https:\/\/media\.example\/animated\.gif"/);
   assert.match(input.html, /class="kg-card kg-video-card lv-atproto-video status-video"/);
   assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
