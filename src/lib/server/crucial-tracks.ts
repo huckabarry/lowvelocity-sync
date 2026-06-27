@@ -231,7 +231,6 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
   return [
     '<div class="lv-listening-entry">',
     '<div class="lv-listening-entry__body">',
-    '<p class="lv-listening-entry__eyebrow">Listening</p>',
     `<h2>${escapeHtml(entry.title)}</h2>`,
     entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
     entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
