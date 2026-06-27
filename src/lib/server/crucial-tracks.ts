@@ -223,6 +223,40 @@ async function lookupAppleById(id: string, label: string): Promise<AppleLookupRe
   }
 }
 
+async function readAppleMusicAlbumTitle(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'text/html',
+        'User-Agent': 'lowvelocity-sync crucial tracks importer'
+      }
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+
+    for (const script of scripts) {
+      const json = script
+        .replace(/^<script[^>]*>/i, '')
+        .replace(/<\/script>$/i, '')
+        .trim();
+      try {
+        const data = JSON.parse(decodeHtmlEntities(json));
+        const albumTitle = data?.inAlbum?.name;
+        if (typeof albumTitle === 'string' && albumTitle.trim()) return albumTitle.trim();
+      } catch {
+        // Keep trying other structured-data blocks.
+      }
+    }
+
+    return html.match(/"inAlbum"\s*:\s*\{[\s\S]{0,800}?"name"\s*:\s*"([^"]+)"/)?.[1] ?? null;
+  } catch (error) {
+    console.warn('Apple Music page album lookup failed', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
 async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEntry> {
   if (entry.artworkUrl && entry.previewUrl && entry.albumTitle) return entry;
   const trackId = appleTrackId(entry.appleMusicUrl);
@@ -235,11 +269,15 @@ async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEn
     : null;
   const result = trackResult ?? collectionResult;
   const albumResult = collectionResult ?? trackResult;
+  const albumTitle = entry.albumTitle
+    || albumResult?.collectionName
+    || albumResult?.collectionCensoredName
+    || await readAppleMusicAlbumTitle(entry.appleMusicUrl);
   const artworkUrl = result?.artworkUrl100?.replace(/\/100x100bb\.(jpg|png|webp)$/i, '/600x600bb.$1') ?? entry.artworkUrl;
 
   return {
     ...entry,
-    albumTitle: entry.albumTitle || albumResult?.collectionName || albumResult?.collectionCensoredName || null,
+    albumTitle,
     artworkUrl,
     previewUrl: entry.previewUrl || trackResult?.previewUrl || null,
     appleMusicUrl: entry.appleMusicUrl || trackResult?.trackViewUrl || collectionResult?.collectionViewUrl || null
