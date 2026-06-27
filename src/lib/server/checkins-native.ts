@@ -293,19 +293,34 @@ function postHtml(checkin: SwarmCheckin, photoUrls: string[]): string {
   const address = joinIfPresent([location.address, region, location.country]);
   const map = mapsUrl(checkin);
   const venueHref = venueUrl(checkin);
+  const latitude = typeof location.lat === 'number' && Number.isFinite(location.lat) ? location.lat : null;
+  const longitude = typeof location.lng === 'number' && Number.isFinite(location.lng) ? location.lng : null;
+  const venueId = normalizeString(venue.id);
+  const visited = visitedAt(checkin).toISOString();
   const photosHtml = photoUrls.map((url) => imageHtml(url, venueName)).join('\n');
   const metadata = [
     category ? metaHtml('Category', category) : '',
     address ? metaHtml('Place', address) : '',
-    metaHtml('Visited', visitedAt(checkin).toISOString().slice(0, 10))
+    metaHtml('Visited', visited.slice(0, 10))
   ].filter(Boolean).join('\n');
   const links = [
     map ? `<a href="${escapeHtml(map)}" rel="noopener">Map</a>` : '',
     venueHref ? `<a href="${escapeHtml(venueHref)}" rel="noopener">Venue</a>` : ''
   ].filter(Boolean).join(' · ');
+  const attrs = [
+    'class="lv-checkin"',
+    'data-checkin-source="swarm"',
+    `data-checkin-id="${escapeHtml(sourceId)}"`,
+    `data-visited-at="${escapeHtml(visited)}"`,
+    venueId ? `data-foursquare-venue-id="${escapeHtml(venueId)}"` : '',
+    latitude !== null ? `data-lat="${latitude.toFixed(6)}"` : '',
+    longitude !== null ? `data-lng="${longitude.toFixed(6)}"` : '',
+    category ? `data-category="${escapeHtml(category)}"` : '',
+    place ? `data-place="${escapeHtml(place)}"` : ''
+  ].filter(Boolean).join(' ');
 
   return [
-    `<article class="lv-checkin" data-checkin-source="swarm" data-checkin-id="${escapeHtml(sourceId)}"${normalizeString(venue.id) ? ` data-foursquare-venue-id="${escapeHtml(normalizeString(venue.id))}"` : ''}>`,
+    `<article ${attrs}>`,
     normalizeString(checkin.shout) ? textHtml(normalizeString(checkin.shout)) : '',
     photosHtml,
     '<section class="lv-checkin-place">',
