@@ -3,12 +3,14 @@ import type { RequestHandler } from './$types';
 import { getSyncConfig } from '$lib/server/config';
 import { timingSafeStringEqual } from '$lib/server/crypto';
 import { importBlueskyPosts } from '$lib/server/bluesky-native';
+import { findLatestGhostPostByTag } from '$lib/server/ghost';
 
 interface ImportBody {
   dryRun?: boolean;
   limit?: number;
   maxPages?: number;
   since?: string;
+  sinceTag?: string;
   until?: string;
   updateExisting?: boolean;
   uploadImages?: boolean;
@@ -45,19 +47,38 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       return json({ error: 'since/until must be valid ISO-compatible dates', requestId }, { status: 400 });
     }
 
+    let resolvedSince = body.since;
+    let sinceBoundary: { tag: string; slug: string; title: string; publishedAt: string; url: string } | null = null;
+    if (!resolvedSince && body.sinceTag?.trim()) {
+      const tag = body.sinceTag.trim();
+      const latest = await findLatestGhostPostByTag(config, tag);
+      if (!latest) {
+        return json({ error: `No published Ghost post found for tag ${tag}`, requestId }, { status: 404 });
+      }
+      const publishedAt = new Date(latest.published_at);
+      resolvedSince = new Date(publishedAt.getTime() + 1).toISOString();
+      sinceBoundary = {
+        tag,
+        slug: latest.slug,
+        title: latest.title,
+        publishedAt: latest.published_at,
+        url: latest.url
+      };
+    }
+
     const dryRun = body.dryRun !== false;
     const importResult = await importBlueskyPosts(config, {
       dryRun,
       limit: body.limit,
       maxPages: body.maxPages,
-      since: body.since,
+      since: resolvedSince,
       until: body.until,
       updateExisting: body.updateExisting,
       uploadImages: body.uploadImages
     });
 
-    console.log(JSON.stringify({ message: 'bluesky native import processed', requestId, dryRun, ...importResult }));
-    return json({ ok: true, requestId, dryRun, ...importResult });
+    console.log(JSON.stringify({ message: 'bluesky native import processed', requestId, dryRun, sinceBoundary, resolvedSince, ...importResult }));
+    return json({ ok: true, requestId, dryRun, sinceBoundary, resolvedSince, ...importResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'bluesky native import failed', requestId, error: message }));

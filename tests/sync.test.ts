@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import test from 'node:test';
 
 import { verifyGhostSignature } from '../src/lib/server/crypto.ts';
-import { buildDocumentLinkInjection } from '../src/lib/server/ghost.ts';
+import { buildDocumentLinkInjection, findLatestGhostPostByTag } from '../src/lib/server/ghost.ts';
 import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transform.ts';
 import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
@@ -138,4 +138,51 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
   assert.match(input.html, /View on Bluesky/);
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
+});
+
+test('finds latest Ghost posts by public and internal tag slugs', async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    return new Response(JSON.stringify({
+      posts: [{
+        id: 'post-id',
+        slug: 'latest-status',
+        title: 'Latest status',
+        status: 'published',
+        url: 'https://lowvelocity.org/latest-status/',
+        published_at: '2026-06-27T12:00:00.000Z',
+        updated_at: '2026-06-27T12:01:00.000Z'
+      }]
+    }), { headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  try {
+    const config = {
+      ghostUrl: 'https://lowvelocity.org',
+      ghostAdminApiKey: `id:${'a'.repeat(64)}`,
+      ghostWebhookSecret: 'secret',
+      atprotoService: 'https://bsky.social',
+      atprotoIdentifier: 'example.test',
+      atprotoDid: 'did:plc:test',
+      blueskyUpdatesIdentifier: 'example.test',
+      blueskyUpdatesDid: 'did:plc:test',
+      atprotoAppPassword: 'password',
+      publicationUri: 'at://did:plc:test/site.standard.publication/self',
+      standardSiteSyncEnabled: true
+    };
+    await findLatestGhostPostByTag({
+      ...config
+    }, 'Afterword');
+    await findLatestGhostPostByTag({
+      ...config
+    }, '#Bluesky');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.match(calls[0], /filter=tag%3Aafterword%2Bstatus%3Apublished/);
+  assert.match(calls[1], /filter=tag%3Ahash-bluesky%2Bstatus%3Apublished/);
 });

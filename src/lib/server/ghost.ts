@@ -131,6 +131,31 @@ export async function findGhostPostBySlug(
   return (type === 'pages' ? body.pages?.[0] : body.posts?.[0]) ?? null;
 }
 
+function ghostTagFilterValue(tag: string): string {
+  const normalized = String(tag || '').trim().toLowerCase();
+  const internal = normalized.startsWith('#');
+  const slug = normalized
+    .replace(/^#/, '')
+    .replace(/['".,!?()[\]{}:;]+/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!slug) throw new Error('Ghost tag is required');
+  return internal ? `hash-${slug}` : slug;
+}
+
+export async function findLatestGhostPostByTag(config: SyncConfig, tag: string): Promise<GhostPost | null> {
+  const url = new URL('/ghost/api/admin/posts/', config.ghostUrl);
+  url.searchParams.set('formats', 'html');
+  url.searchParams.set('include', 'tags');
+  url.searchParams.set('filter', `tag:${ghostTagFilterValue(tag)}+status:published`);
+  url.searchParams.set('order', 'published_at desc');
+  url.searchParams.set('limit', '1');
+  const response = await fetch(url, { headers: await ghostHeaders(config) });
+  const body = await readJsonResponse<GhostPostsResponse>(response, 'Ghost Admin API');
+  return body.posts?.[0] ?? null;
+}
+
 export interface GhostHtmlEntryInput {
   slug: string;
   title: string;

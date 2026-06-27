@@ -30,6 +30,10 @@ on:
         description: Optional ISO date/time cutoff, inclusive
         required: false
         default: ""
+      since_tag:
+        description: Use newest Ghost post with this tag as cutoff when since is blank
+        required: false
+        default: "afterword"
       until:
         description: Optional ISO date/time upper cutoff, inclusive
         required: false
@@ -54,6 +58,7 @@ jobs:
           LIMIT: ${{ inputs.limit }}
           MAX_PAGES: ${{ inputs.max_pages }}
           SINCE: ${{ inputs.since }}
+          SINCE_TAG: ${{ inputs.since_tag }}
           UNTIL: ${{ inputs.until }}
         shell: bash
         run: |
@@ -68,6 +73,7 @@ jobs:
               --argjson limit "${LIMIT}" \
               --argjson maxPages "${MAX_PAGES}" \
               --arg since "${SINCE}" \
+              --arg sinceTag "${SINCE_TAG}" \
               --arg until "${UNTIL}" \
               '{
                 dryRun: $dryRun,
@@ -77,6 +83,7 @@ jobs:
                 maxPages: $maxPages
               }
               + (if $since == "" then {} else {since: $since} end)
+              + (if $since != "" or $sinceTag == "" then {} else {sinceTag: $sinceTag} end)
               + (if $until == "" then {} else {until: $until} end)' |
             curl --silent --show-error \
               --request POST \
