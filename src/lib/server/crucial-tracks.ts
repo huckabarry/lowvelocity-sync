@@ -11,6 +11,7 @@ export interface CrucialTrackEntry {
   title: string;
   artist: string;
   albumTitle: string | null;
+  albumReleaseYear: string | null;
   note: string;
   noteHtml: string | null;
   publishedAt: string;
@@ -80,6 +81,11 @@ function imageFilename(entry: CrucialTrackEntry): string {
   return `${entrySlug(entry)}.jpg`;
 }
 
+function yearFromDate(value: string | null | undefined): string | null {
+  const year = String(value || '').match(/\b(19|20)\d{2}\b/)?.[0] ?? null;
+  return year && Number(year) >= 1900 && Number(year) <= 2099 ? year : null;
+}
+
 function appleTrackId(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -129,6 +135,7 @@ function archiveEntryFromMarkdown(markdown: string): CrucialTrackEntry | null {
     title: parsed.title,
     artist: parsed.artist,
     albumTitle: null,
+    albumReleaseYear: null,
     note: stripHtml(noteHtml || ''),
     noteHtml,
     publishedAt: data.published,
@@ -172,6 +179,7 @@ async function fetchLiveFeed(): Promise<CrucialTrackEntry[]> {
       title: String(details.song || '').trim(),
       artist: String(details.artist || '').trim(),
       albumTitle: null,
+      albumReleaseYear: null,
       note: stripHtml(noteHtml || ''),
       noteHtml,
       publishedAt: item.date_published || new Date().toISOString(),
@@ -208,6 +216,7 @@ type AppleLookupResult = {
   previewUrl?: string;
   trackViewUrl?: string;
   collectionViewUrl?: string;
+  releaseDate?: string;
 };
 
 async function lookupAppleById(id: string, label: string): Promise<AppleLookupResult | null> {
@@ -257,8 +266,42 @@ async function readAppleMusicAlbumTitle(url: string | null): Promise<string | nu
   }
 }
 
+async function readAppleMusicAlbumYear(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'text/html',
+        'User-Agent': 'lowvelocity-sync crucial tracks importer'
+      }
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+
+    for (const script of scripts) {
+      const json = script
+        .replace(/^<script[^>]*>/i, '')
+        .replace(/<\/script>$/i, '')
+        .trim();
+      try {
+        const data = JSON.parse(decodeHtmlEntities(json));
+        const releaseYear = yearFromDate(data?.inAlbum?.datePublished || data?.datePublished);
+        if (releaseYear) return releaseYear;
+      } catch {
+        // Keep trying other structured-data blocks.
+      }
+    }
+
+    return yearFromDate(html.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1]);
+  } catch (error) {
+    console.warn('Apple Music page year lookup failed', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
 async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEntry> {
-  if (entry.artworkUrl && entry.previewUrl && entry.albumTitle) return entry;
+  if (entry.artworkUrl && entry.previewUrl && entry.albumTitle && entry.albumReleaseYear) return entry;
   const trackId = appleTrackId(entry.appleMusicUrl);
   const collectionId = appleCollectionId(entry.appleMusicUrl);
   if (!trackId && !collectionId) return entry;
@@ -273,11 +316,15 @@ async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEn
     || albumResult?.collectionName
     || albumResult?.collectionCensoredName
     || await readAppleMusicAlbumTitle(entry.appleMusicUrl);
+  const albumReleaseYear = entry.albumReleaseYear
+    || yearFromDate(albumResult?.releaseDate)
+    || await readAppleMusicAlbumYear(entry.appleMusicUrl);
   const artworkUrl = result?.artworkUrl100?.replace(/\/100x100bb\.(jpg|png|webp)$/i, '/600x600bb.$1') ?? entry.artworkUrl;
 
   return {
     ...entry,
     albumTitle,
+    albumReleaseYear,
     artworkUrl,
     previewUrl: entry.previewUrl || trackResult?.previewUrl || null,
     appleMusicUrl: entry.appleMusicUrl || trackResult?.trackViewUrl || collectionResult?.collectionViewUrl || null
@@ -325,12 +372,15 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
     entry.playlistUrl ? `<a href="${escapeHtml(entry.playlistUrl)}" rel="noopener">Playlist</a>` : '',
     entry.sourceUrl ? `<a href="${escapeHtml(entry.sourceUrl)}" rel="noopener">Crucial Tracks</a>` : ''
   ].filter(Boolean).join('');
+  const albumHeading = entry.albumTitle
+    ? `${escapeHtml(entry.albumTitle)}${entry.albumReleaseYear ? ` <span class="lv-listening-entry__year">(${escapeHtml(entry.albumReleaseYear)})</span>` : ''}`
+    : '';
 
   return [
     '<div class="lv-listening-entry">',
     '<div class="lv-listening-entry__body">',
     links ? `<p class="lv-listening-entry__links">${links}</p>` : '',
-    entry.albumTitle ? `<h2>${escapeHtml(entry.albumTitle)}</h2>` : '',
+    albumHeading ? `<h2>${albumHeading}</h2>` : '',
     entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
     entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
     '</div>',
