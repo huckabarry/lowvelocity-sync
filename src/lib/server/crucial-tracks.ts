@@ -214,13 +214,37 @@ async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEn
   }
 }
 
-export async function getCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
+async function getMergedCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
   const [live, archive] = await Promise.all([fetchLiveFeed(), fetchArchiveEntries()]);
   const bySourceUrl = new Map<string, CrucialTrackEntry>();
   for (const entry of archive) bySourceUrl.set(entry.sourceUrl, entry);
   for (const entry of live) bySourceUrl.set(entry.sourceUrl, { ...(bySourceUrl.get(entry.sourceUrl) ?? {}), ...entry });
-  const enriched = await Promise.all([...bySourceUrl.values()].map(enrichFromApple));
-  return enriched.sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+  return [...bySourceUrl.values()].sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(values.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < values.length) {
+      const current = index;
+      index += 1;
+      results[current] = await mapper(values[current]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
+  return results;
+}
+
+export async function getCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
+  const entries = await getMergedCrucialTrackEntries();
+  return mapWithConcurrency(entries, 4, enrichFromApple);
 }
 
 function musicPostHtml(entry: CrucialTrackEntry): string {
@@ -265,10 +289,10 @@ export async function ensureListeningPage(config: SyncConfig, dryRun = false) {
 }
 
 export async function importCrucialTracks(config: SyncConfig, options: ImportCrucialTracksOptions = {}) {
-  const entries = await getCrucialTrackEntries();
+  const entries = await getMergedCrucialTrackEntries();
   const offset = Math.max(0, options.offset ?? 0);
   const limit = Math.max(1, Math.min(20, options.limit ?? 10));
-  const selected = entries.slice(offset, offset + limit);
+  const selected = await mapWithConcurrency(entries.slice(offset, offset + limit), 4, enrichFromApple);
   const results = [];
 
   for (const entry of selected) {
