@@ -75,7 +75,11 @@ test('normalizes authored Bluesky posts and preserves embeds', () => {
           title: 'A linked post',
           description: 'Preview text.',
           thumb: 'https://cdn.example/preview.webp'
-        }
+        },
+        playlist: 'https://video.bsky.app/watch/playlist.m3u8',
+        thumbnail: 'https://video.bsky.app/poster.jpg',
+        alt: 'A short video',
+        $type: 'app.bsky.embed.video#view'
       },
       likeCount: 1
     }
@@ -84,9 +88,10 @@ test('normalizes authored Bluesky posts and preserves embeds', () => {
   assert.equal(update?.url, 'https://bsky.app/profile/lowvelocity.org/post/3abc');
   assert.equal(update?.text, 'A small update.');
   assert.equal(update?.counts.likes, 1);
-  assert.equal(update?.embeds.length, 2);
+  assert.equal(update?.embeds.length, 3);
   assert.equal(update?.embeds[0].type, 'image');
   assert.equal(update?.embeds[1].type, 'external');
+  assert.equal(update?.embeds[2].type, 'video');
 });
 
 test('skips Bluesky reposts, replies, and other authors', () => {
@@ -131,6 +136,25 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
       alt: 'A photo',
       width: 1200,
       height: 800
+    }, {
+      type: 'external',
+      uri: 'https://example.com/article',
+      title: 'Article title',
+      description: 'Article description',
+      thumb: 'https://cdn.example/article.jpg'
+    }, {
+      type: 'external',
+      uri: 'https://media.example/animated.gif',
+      title: 'Animated GIF',
+      description: 'A dancing GIF',
+      thumb: 'https://media.example/animated.gif'
+    }, {
+      type: 'video',
+      playlist: 'https://video.bsky.app/watch/playlist.m3u8',
+      thumbnail: 'https://cdn.example/poster.jpg',
+      alt: 'A short video',
+      width: 1280,
+      height: 720
     }]
   });
 
@@ -140,6 +164,10 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.deepEqual(input.tags, [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }]);
   assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
   assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
+  assert.match(input.html, /class="lv-atproto-card status-external"/);
+  assert.match(input.html, /class="status-external-thumb" src="https:\/\/cdn\.example\/article\.jpg"/);
+  assert.match(input.html, /class="status-external-gif" src="https:\/\/media\.example\/animated\.gif"/);
+  assert.match(input.html, /class="kg-card kg-video-card lv-atproto-video status-video"/);
   assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
 });

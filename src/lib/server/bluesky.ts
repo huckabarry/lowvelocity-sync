@@ -49,6 +49,13 @@ interface BlueskyEmbedView {
   external?: BlueskyExternalView;
   record?: BlueskyRecordView;
   media?: BlueskyEmbedView;
+  playlist?: string;
+  thumbnail?: string;
+  alt?: string;
+  aspectRatio?: {
+    width?: number;
+    height?: number;
+  };
 }
 
 interface BlueskyFeedItem {
@@ -131,7 +138,16 @@ export interface BlueskyUpdateQuote {
   embeds?: BlueskyUpdateEmbed[];
 }
 
-export type BlueskyUpdateEmbed = BlueskyUpdateImage | BlueskyUpdateExternal | BlueskyUpdateQuote;
+export interface BlueskyUpdateVideo {
+  type: 'video';
+  playlist: string;
+  thumbnail?: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
+export type BlueskyUpdateEmbed = BlueskyUpdateImage | BlueskyUpdateExternal | BlueskyUpdateQuote | BlueskyUpdateVideo;
 
 export interface BlueskyUpdate {
   uri: string;
@@ -230,12 +246,27 @@ function normalizeQuote(embed: BlueskyEmbedView | undefined): BlueskyUpdateQuote
   }];
 }
 
+function normalizeVideo(embed: BlueskyEmbedView | undefined): BlueskyUpdateVideo[] {
+  const type = embed?.$type ?? '';
+  if (!embed?.playlist && !type.includes('app.bsky.embed.video#view')) return [];
+  if (!embed?.playlist) return [];
+  return [{
+    type: 'video',
+    playlist: embed.playlist,
+    thumbnail: embed.thumbnail,
+    alt: embed.alt,
+    width: embed.aspectRatio?.width,
+    height: embed.aspectRatio?.height
+  }];
+}
+
 function normalizeEmbeds(embed: BlueskyEmbedView | undefined): BlueskyUpdateEmbed[] {
   const mediaEmbeds = embed?.media ? normalizeEmbeds(embed.media) : [];
   return [
     ...normalizeImages(embed),
     ...normalizeExternal(embed),
     ...normalizeQuote(embed),
+    ...normalizeVideo(embed),
     ...mediaEmbeds
   ];
 }

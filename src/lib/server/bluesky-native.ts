@@ -5,7 +5,8 @@ import {
   type BlueskyUpdateEmbed,
   type BlueskyUpdateExternal,
   type BlueskyUpdateImage,
-  type BlueskyUpdateQuote
+  type BlueskyUpdateQuote,
+  type BlueskyUpdateVideo
 } from './bluesky.ts';
 import type { SyncConfig } from './config.ts';
 import { createGhostHtmlEntry, findGhostPostBySlug, updateGhostHtmlEntry, uploadGhostImageFromUrl } from './ghost.ts';
@@ -65,6 +66,37 @@ function imageFilename(update: BlueskyUpdate, index: number): string {
   return `${slugForUpdate(update)}-${index + 1}.jpg`;
 }
 
+function externalImageFilename(update: BlueskyUpdate, index: number, url: string): string {
+  const extension = /\.gif(?:[?#]|$)/i.test(url) ? 'gif' : 'jpg';
+  return `${slugForUpdate(update)}-external-${index + 1}.${extension}`;
+}
+
+function videoPosterFilename(update: BlueskyUpdate, index: number): string {
+  return `${slugForUpdate(update)}-video-${index + 1}.jpg`;
+}
+
+async function tryUploadGhostImageFromUrl(config: SyncConfig, imageUrl: string, filename: string): Promise<string | null> {
+  try {
+    return await uploadGhostImageFromUrl(config, imageUrl, filename);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      message: 'unable to upload Bluesky embed image to Ghost',
+      imageUrl,
+      filename,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }));
+    return null;
+  }
+}
+
+function isAnimatedGifExternal(external: BlueskyUpdateExternal): boolean {
+  try {
+    return new URL(external.uri).pathname.toLowerCase().endsWith('.gif');
+  } catch {
+    return /\.gif(?:[?#]|$)/i.test(external.uri);
+  }
+}
+
 function imageHtml(image: BlueskyUpdateImage): string {
   const width = image.width ? ` width="${image.width}"` : '';
   const height = image.height ? ` height="${image.height}"` : '';
@@ -77,15 +109,45 @@ function imageHtml(image: BlueskyUpdateImage): string {
 }
 
 function externalHtml(external: BlueskyUpdateExternal): string {
+  if (isAnimatedGifExternal(external)) {
+    return [
+      `<a class="lv-atproto-card status-external status-external-animated" href="${escapeHtml(external.uri)}" rel="noopener">`,
+      `<img class="status-external-gif" src="${escapeHtml(external.thumb || external.uri)}" alt="${escapeHtml(external.description || external.title || '')}" loading="lazy">`,
+      external.title ? `<span class="status-external-gif-caption">${escapeHtml(external.title)}</span>` : '',
+      '</a>'
+    ].filter(Boolean).join('\n');
+  }
+
   return [
-    `<a class="lv-atproto-card" href="${escapeHtml(external.uri)}" rel="noopener">`,
-    external.thumb ? `<img src="${escapeHtml(external.thumb)}" alt="" loading="lazy">` : '',
-    '<span>',
+    `<a class="lv-atproto-card status-external" href="${escapeHtml(external.uri)}" rel="noopener">`,
+    external.thumb ? `<img class="status-external-thumb" src="${escapeHtml(external.thumb)}" alt="" loading="lazy">` : '',
+    '<span class="status-external-details">',
+    `<span class="status-external-domain">${escapeHtml(externalDomain(external.uri))}</span>`,
     external.title ? `<strong>${escapeHtml(external.title)}</strong>` : escapeHtml(external.uri),
-    external.description ? `<small>${escapeHtml(external.description)}</small>` : '',
+    external.description ? `<span class="status-external-description">${escapeHtml(external.description)}</span>` : '',
     '</span>',
     '</a>'
   ].join('\n');
+}
+
+function externalDomain(uri: string): string {
+  try {
+    return new URL(uri).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function videoHtml(video: BlueskyUpdateVideo): string {
+  const width = video.width ? ` width="${video.width}"` : '';
+  const height = video.height ? ` height="${video.height}"` : '';
+  const poster = video.thumbnail ? ` poster="${escapeHtml(video.thumbnail)}"` : '';
+  return [
+    '<figure class="kg-card kg-video-card lv-atproto-video status-video">',
+    `<video controls playsinline preload="metadata" src="${escapeHtml(video.playlist)}"${poster}${width}${height}></video>`,
+    video.alt ? `<figcaption>${escapeHtml(video.alt)}</figcaption>` : '',
+    '</figure>'
+  ].filter(Boolean).join('\n');
 }
 
 function quoteHtml(quote: BlueskyUpdateQuote): string {
@@ -111,15 +173,41 @@ async function withUploadedImages(
   if (!uploadImages) return update.embeds;
   const embeds: BlueskyUpdateEmbed[] = [];
   let imageIndex = 0;
+  let externalIndex = 0;
+  let videoIndex = 0;
 
   for (const embed of update.embeds) {
-    if (embed.type !== 'image') {
-      embeds.push(embed);
+    if (embed.type === 'image') {
+      const uploaded = await tryUploadGhostImageFromUrl(config, embed.url, imageFilename(update, imageIndex));
+      embeds.push({ ...embed, url: uploaded ?? embed.url });
+      imageIndex += 1;
       continue;
     }
-    const uploaded = await uploadGhostImageFromUrl(config, embed.url, imageFilename(update, imageIndex));
-    embeds.push({ ...embed, url: uploaded ?? embed.url });
-    imageIndex += 1;
+
+    if (embed.type === 'external') {
+      const externalImageUrl = isAnimatedGifExternal(embed) ? embed.uri : embed.thumb;
+      if (!externalImageUrl) {
+        embeds.push(embed);
+        continue;
+      }
+      const uploaded = await tryUploadGhostImageFromUrl(config, externalImageUrl, externalImageFilename(update, externalIndex, externalImageUrl));
+      embeds.push({ ...embed, thumb: uploaded ?? embed.thumb ?? (isAnimatedGifExternal(embed) ? embed.uri : undefined) });
+      externalIndex += 1;
+      continue;
+    }
+
+    if (embed.type === 'video') {
+      if (!embed.thumbnail) {
+        embeds.push(embed);
+        continue;
+      }
+      const uploaded = await tryUploadGhostImageFromUrl(config, embed.thumbnail, videoPosterFilename(update, videoIndex));
+      embeds.push({ ...embed, thumbnail: uploaded ?? embed.thumbnail });
+      videoIndex += 1;
+      continue;
+    }
+
+    embeds.push(embed);
   }
 
   return embeds;
@@ -129,6 +217,7 @@ function postHtml(update: BlueskyUpdate, embeds: BlueskyUpdateEmbed[]): string {
   const embedHtml = embeds.map((embed) => {
     if (embed.type === 'image') return imageHtml(embed);
     if (embed.type === 'external') return externalHtml(embed);
+    if (embed.type === 'video') return videoHtml(embed);
     return quoteHtml(embed);
   }).join('\n');
 
