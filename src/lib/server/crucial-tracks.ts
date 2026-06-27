@@ -10,6 +10,7 @@ export interface CrucialTrackEntry {
   sourceUrl: string;
   title: string;
   artist: string;
+  albumTitle: string | null;
   note: string;
   noteHtml: string | null;
   publishedAt: string;
@@ -117,6 +118,7 @@ function archiveEntryFromMarkdown(markdown: string): CrucialTrackEntry | null {
     sourceUrl: data.original_url,
     title: parsed.title,
     artist: parsed.artist,
+    albumTitle: null,
     note: stripHtml(noteHtml || ''),
     noteHtml,
     publishedAt: data.published,
@@ -159,6 +161,7 @@ async function fetchLiveFeed(): Promise<CrucialTrackEntry[]> {
       sourceUrl: item.url || '',
       title: String(details.song || '').trim(),
       artist: String(details.artist || '').trim(),
+      albumTitle: null,
       note: stripHtml(noteHtml || ''),
       noteHtml,
       publishedAt: item.date_published || new Date().toISOString(),
@@ -189,11 +192,11 @@ async function fetchArchiveEntries(): Promise<CrucialTrackEntry[]> {
 }
 
 async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEntry> {
-  if (entry.artworkUrl && entry.previewUrl) return entry;
+  if (entry.artworkUrl && entry.previewUrl && entry.albumTitle) return entry;
   const id = appleTrackId(entry.appleMusicUrl);
   if (!id) return entry;
   try {
-    const data = await readJson<{ results?: Array<{ artworkUrl100?: string; previewUrl?: string; trackViewUrl?: string }> }>(
+    const data = await readJson<{ results?: Array<{ artworkUrl100?: string; collectionName?: string; previewUrl?: string; trackViewUrl?: string }> }>(
       `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}`,
       'Apple Music lookup'
     );
@@ -201,6 +204,7 @@ async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEn
     const artworkUrl = result?.artworkUrl100?.replace(/\/100x100bb\.(jpg|png|webp)$/i, '/600x600bb.$1') ?? entry.artworkUrl;
     return {
       ...entry,
+      albumTitle: entry.albumTitle || result?.collectionName || null,
       artworkUrl,
       previewUrl: entry.previewUrl || result?.previewUrl || null,
       appleMusicUrl: entry.appleMusicUrl || result?.trackViewUrl || null
@@ -231,9 +235,9 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
   return [
     '<div class="lv-listening-entry">',
     '<div class="lv-listening-entry__body">',
-    `<h2>${escapeHtml(entry.title)}</h2>`,
-    entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
     links ? `<p class="lv-listening-entry__links">${links}</p>` : '',
+    entry.albumTitle ? `<h2>${escapeHtml(entry.albumTitle)}</h2>` : '',
+    entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
     entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
     '</div>',
     '</div>'
