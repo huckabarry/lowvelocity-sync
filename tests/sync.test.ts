@@ -152,6 +152,15 @@ test('cleans visible Bluesky source block from imported Bluesky HTML', () => {
   assert.doesNotMatch(cleaned, /lv-atproto-source/);
 });
 
+test('cleans Ghost-normalized visible Bluesky source block', () => {
+  const html = '<p>Hello.</p><p><a href="https://bsky.app/profile/bryan.eurosky.social/post/3abc?ref=lowvelocity.org" rel="syndication external noopener">View on Bluesky</a> · <code>at://did:plc:test/app.bsky.feed.post/3abc</code></p>';
+  const cleaned = cleanBlueskyPostHtml(html);
+  assert.match(cleaned, /<p>Hello\.<\/p>/);
+  assert.doesNotMatch(cleaned, /View on Bluesky/);
+  assert.doesNotMatch(cleaned, /bsky\.app/);
+  assert.doesNotMatch(cleaned, /<code>at:\/\//);
+});
+
 test('finds latest Ghost posts by public and internal tag slugs', async () => {
   const calls: string[] = [];
   const originalFetch = globalThis.fetch;

@@ -9,10 +9,12 @@ export interface CleanupBlueskyPostsOptions {
 
 const VISIBLE_ATPROTO_SOURCE_PATTERN = /\s*<span\s+aria-hidden=["']true["']>\s*·\s*<\/span>\s*<code>at:\/\/[^<]+<\/code>/g;
 const VISIBLE_BLUESKY_SOURCE_PARAGRAPH_PATTERN = /\s*<p\s+class=["']lv-atproto-source["'][^>]*>[\s\S]*?<\/p>/g;
+const NORMALIZED_BLUESKY_SOURCE_PARAGRAPH_PATTERN = /\s*<p>\s*<a\s+href=["']https:\/\/bsky\.app\/profile\/[^"']+["'][^>]*>\s*View on Bluesky\s*<\/a>\s*·\s*<code>at:\/\/[^<]+<\/code>\s*<\/p>/g;
 
 export function cleanBlueskyPostHtml(html: string | null | undefined): string {
   return String(html || '')
     .replace(VISIBLE_BLUESKY_SOURCE_PARAGRAPH_PATTERN, '')
+    .replace(NORMALIZED_BLUESKY_SOURCE_PARAGRAPH_PATTERN, '')
     .replace(VISIBLE_ATPROTO_SOURCE_PATTERN, '');
 }
 
