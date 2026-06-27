@@ -233,8 +233,8 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
     '<div class="lv-listening-entry__body">',
     `<h2>${escapeHtml(entry.title)}</h2>`,
     entry.artist ? `<p class="lv-listening-entry__artist">${escapeHtml(entry.artist)}</p>` : '',
-    entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
     links ? `<p class="lv-listening-entry__links">${links}</p>` : '',
+    entry.noteHtml ? `<div class="lv-listening-entry__note">${entry.noteHtml}</div>` : '',
     '</div>',
     '</div>'
   ].filter(Boolean).join('\n');
