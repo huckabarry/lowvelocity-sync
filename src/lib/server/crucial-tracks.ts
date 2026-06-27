@@ -398,8 +398,8 @@ export async function ensureListeningPage(config: SyncConfig, dryRun = false) {
   const input = {
     slug: 'listening',
     title: 'Listening',
-    html: '<p>Track notes from Crucial Tracks.</p>',
-    custom_excerpt: 'Track notes from Crucial Tracks.',
+    html: '<p>Notes from Crucial Tracks.</p>',
+    custom_excerpt: 'Notes from Crucial Tracks.',
     status: 'published' as const
   };
   const page = existing
