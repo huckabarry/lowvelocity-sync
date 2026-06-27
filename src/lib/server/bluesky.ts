@@ -136,9 +136,13 @@ export interface BlueskyUpdatesResponse {
   items: BlueskyUpdate[];
 }
 
-function blueskyPostUrl(handle: string, uri: string): string {
+export function blueskyPostUrl(handle: string, uri: string): string {
   const rkey = uri.split('/').at(-1);
   return `https://bsky.app/profile/${encodeURIComponent(handle)}/post/${encodeURIComponent(rkey ?? uri)}`;
+}
+
+export function blueskyPostRkey(uri: string): string {
+  return uri.split('/').at(-1) ?? uri;
 }
 
 function normalizeImages(embed: BlueskyEmbedView | undefined): BlueskyUpdateImage[] {
@@ -224,11 +228,26 @@ export function normalizeBlueskyFeedItem(item: BlueskyFeedItem, expectedDid: str
   };
 }
 
-export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPDATES_LIMIT): Promise<BlueskyUpdatesResponse> {
-  const items: BlueskyUpdate[] = [];
-  let cursor: string | undefined;
+export interface ReadBlueskyUpdatesOptions {
+  limit?: number;
+  maxPages?: number;
+  since?: string;
+  until?: string;
+}
 
-  for (let page = 0; page < 5 && items.length < limit; page += 1) {
+export async function readBlueskyUpdatesWindow(
+  config: SyncConfig,
+  options: ReadBlueskyUpdatesOptions = {}
+): Promise<BlueskyUpdatesResponse> {
+  const items: BlueskyUpdate[] = [];
+  const limit = Math.max(1, Math.min(500, options.limit ?? BLUESKY_UPDATES_LIMIT));
+  const maxPages = Math.max(1, Math.min(25, options.maxPages ?? 5));
+  const sinceTime = options.since ? Date.parse(options.since) : Number.NaN;
+  const untilTime = options.until ? Date.parse(options.until) : Number.NaN;
+  let cursor: string | undefined;
+  let reachedSinceBoundary = false;
+
+  for (let page = 0; page < maxPages && items.length < limit && !reachedSinceBoundary; page += 1) {
     const url = new URL('/xrpc/app.bsky.feed.getAuthorFeed', 'https://public.api.bsky.app');
     url.searchParams.set('actor', config.blueskyUpdatesDid);
     url.searchParams.set('filter', 'posts_with_replies');
@@ -239,7 +258,14 @@ export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPD
     const body = await readJsonResponse<BlueskyAuthorFeedResponse>(response, 'Bluesky public API');
     for (const feedItem of body.feed ?? []) {
       const update = normalizeBlueskyFeedItem(feedItem, config.blueskyUpdatesDid);
-      if (update) items.push(update);
+      if (!update) continue;
+      const created = Date.parse(update.createdAt);
+      if (Number.isFinite(untilTime) && created > untilTime) continue;
+      if (Number.isFinite(sinceTime) && created < sinceTime) {
+        reachedSinceBoundary = true;
+        break;
+      }
+      items.push(update);
       if (items.length >= limit) break;
     }
     cursor = body.cursor;
@@ -255,4 +281,8 @@ export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPD
     limit,
     items
   };
+}
+
+export async function readBlueskyUpdates(config: SyncConfig, limit = BLUESKY_UPDATES_LIMIT): Promise<BlueskyUpdatesResponse> {
+  return readBlueskyUpdatesWindow(config, { limit });
 }

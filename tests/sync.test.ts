@@ -6,6 +6,7 @@ import { verifyGhostSignature } from '../src/lib/server/crypto.ts';
 import { buildDocumentLinkInjection } from '../src/lib/server/ghost.ts';
 import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transform.ts';
 import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
+import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
@@ -111,4 +112,30 @@ test('skips Bluesky reposts, replies, and other authors', () => {
       record: { text: 'Other author', createdAt: '2026-06-23T12:00:00.000Z' }
     }
   }, 'did:plc:test'), null);
+});
+
+test('builds idempotent native Ghost input for Bluesky posts', () => {
+  const input = ghostInputForBlueskyUpdate({
+    uri: 'at://did:plc:test/app.bsky.feed.post/3mpbzshd77i2o',
+    cid: 'bafy',
+    url: 'https://bsky.app/profile/bryan.eurosky.social/post/3mpbzshd77i2o',
+    text: 'A short note with https://lowvelocity.org/link/',
+    createdAt: '2026-06-27T17:41:00.000Z',
+    author: { did: 'did:plc:test', handle: 'bryan.eurosky.social' },
+    counts: { likes: 1, replies: 2, reposts: 3, quotes: 4 },
+    embeds: [{
+      type: 'image',
+      url: 'https://cdn.example/photo.jpg',
+      alt: 'A photo',
+      width: 1200,
+      height: 800
+    }]
+  });
+
+  assert.equal(input.slug, 'bsky-3mpbzshd77i2o');
+  assert.equal(input.feature_image, 'https://cdn.example/photo.jpg');
+  assert.deepEqual(input.tags, [{ name: 'updates' }, { name: '#bluesky' }, { name: '#atproto' }]);
+  assert.match(input.html, /data-atproto-uri="at:\/\/did:plc:test\/app.bsky.feed.post\/3mpbzshd77i2o"/);
+  assert.match(input.html, /View on Bluesky/);
+  assert.match(input.html, /href="https:\/\/lowvelocity.org\/link\/"/);
 });

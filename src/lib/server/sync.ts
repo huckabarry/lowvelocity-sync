@@ -4,6 +4,20 @@ import { existingDocumentRkey } from './document-identity.ts';
 import { readGhostPost, setDocumentLink } from './ghost.ts';
 import { ghostPostToDocument } from './transform.ts';
 
+const STANDARD_SITE_EXCLUDED_TAGS = new Set([
+  '#crucialtracks',
+  '#bluesky',
+  '#atproto'
+]);
+
+function standardSiteExclusionReason(tags: Array<{ name?: string }> | undefined): string | null {
+  const names = tags?.map((tag) => tag.name).filter(Boolean) ?? [];
+  if (names.some((name) => STANDARD_SITE_EXCLUDED_TAGS.has(name ?? ''))) {
+    return 'internally syndicated posts are excluded from standard.site sync';
+  }
+  return null;
+}
+
 export async function syncPublishedPost(config: SyncConfig, postId: string) {
   if (!config.standardSiteSyncEnabled) {
     return {
@@ -15,10 +29,11 @@ export async function syncPublishedPost(config: SyncConfig, postId: string) {
 
   const post = await readGhostPost(config, postId);
   if (post.status !== 'published') throw new Error(`Refusing to sync Ghost post with status ${post.status}`);
-  if (post.tags?.some((tag) => tag.name === '#crucialtracks')) {
+  const exclusionReason = standardSiteExclusionReason(post.tags);
+  if (exclusionReason) {
     return {
       action: 'skip' as const,
-      reason: 'crucial tracks posts are excluded from standard.site sync' as const,
+      reason: exclusionReason,
       postId: post.id,
       slug: post.slug
     };
