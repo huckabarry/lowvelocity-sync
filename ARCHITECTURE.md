@@ -23,17 +23,34 @@ down.
 | Crucial Tracks to Ghost listening | Worker cron every 5 minutes | Crucial Tracks feed/archive | Native Ghost posts | `listening`, `#crucialtracks` |
 | Foursquare/Swarm to Ghost check-ins | Worker cron every 15 minutes | Foursquare user check-ins | Native Ghost posts | `check-ins`, `#swarm`, `#foursquare` |
 
-Imported Bluesky, Crucial Tracks, and check-in posts are intentionally excluded
-from Standard.site sync. The exclusion list lives in `src/lib/server/sync.ts`.
+Imported Bluesky, Crucial Tracks, check-in, and Popfeed media posts are
+intentionally excluded from Standard.site sync. The exclusion list lives in
+`src/lib/server/sync.ts`.
 
 ## Manual flows
 
 - GitHub Actions can manually call the Bluesky, Crucial Tracks, Foursquare, PDS
-  check-in, cleanup, and ActivityPub test endpoints.
+  check-in, Popfeed media, cleanup, and ActivityPub test endpoints.
 - Backfills should use manual workflows or protected admin endpoints with small
   batches.
 - The Ghost theme deploys from `huckabarry/lowvelocity`; this Worker deploys
   from `huckabarry/lowvelocity-sync`.
+
+### Popfeed/media backfill
+
+Popfeed books, movies, and shows are imported manually from existing canonical
+Afterword PDS records in `blog.afterword.media.popfeedItem` on the personal PDS
+(`MEDIA_PDS_DID` / `MEDIA_PDS_SERVICE`). The importer applies approved
+`blog.afterword.media.popfeedOverride` records for better cover art, uploads
+cover/poster images to Ghost during real imports, and creates native Ghost posts
+tagged with `#popfeed` and `#pds`.
+
+This flow intentionally does not read live Popfeed during page rendering and is
+not scheduled as a cron. By default it imports finished/read books, watched
+movies, and watched shows. Currently-reading/currently-watching records can be
+included manually, but the conservative default keeps transient states,
+watchlists, and want-to-read records out of Ghost unless that policy changes
+later.
 
 ## Runtime boundaries
 
@@ -51,6 +68,7 @@ Non-secret config lives in `wrangler.jsonc`:
 - Ghost URL
 - ATProto service, DID, identifier, and publication URI
 - Bluesky updates identity
+- Personal media PDS service and DID
 - Standard.site sync enablement
 - Worker cron cadence
 - `CHECKINS_KV` binding
@@ -74,8 +92,8 @@ GitHub Actions also needs `CLOUDFLARE_ACCOUNT_ID` and
 
 - configuration readiness flags
 - expected scheduled import cadences
-- last-run status for Bluesky, Crucial Tracks, Foursquare check-ins, and Ghost
-  webhooks when `CHECKINS_KV` is available
+- last-run status for Bluesky, Crucial Tracks, Foursquare check-ins, manual
+  Popfeed imports, and Ghost webhooks when `CHECKINS_KV` is available
 
 The last-run records are deliberately small summaries. They avoid secrets and
 avoid storing full imported content.
@@ -125,6 +143,7 @@ If this is refactored later, preserve these behaviors:
 - Bluesky post slugs are based on the ATProto post rkey.
 - Foursquare check-in slugs include the check-in source ID.
 - Crucial Tracks slugs are derived from track metadata.
+- Popfeed media slugs combine the media type, title, and source PDS rkey.
 - Standard.site documents reuse an existing document rkey when one is already
   linked in Ghost code injection; otherwise they use the Ghost post ID.
 

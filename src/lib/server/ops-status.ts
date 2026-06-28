@@ -1,4 +1,4 @@
-export type OpsFlow = 'bluesky' | 'crucialTracks' | 'checkins' | 'ghostWebhook';
+export type OpsFlow = 'bluesky' | 'crucialTracks' | 'checkins' | 'popfeed' | 'ghostWebhook';
 export type OpsOutcome = 'ok' | 'error' | 'skipped';
 
 export interface OpsStatus {
@@ -12,7 +12,7 @@ export interface OpsStatus {
 
 const OPS_PREFIX = 'ops:last:';
 
-const FLOWS: OpsFlow[] = ['bluesky', 'crucialTracks', 'checkins', 'ghostWebhook'];
+const FLOWS: OpsFlow[] = ['bluesky', 'crucialTracks', 'checkins', 'popfeed', 'ghostWebhook'];
 
 function opsStore(platform: App.Platform | undefined): KVNamespace | undefined {
   return platform?.env?.CHECKINS_KV;
@@ -48,6 +48,9 @@ export function summarizeResult(result: unknown): Record<string, string | number
     'total',
     'totalFetched',
     'processed',
+    'totalCanonical',
+    'totalOverrides',
+    'totalImportable',
     'pagesScanned',
     'offset',
     'nextOffset',

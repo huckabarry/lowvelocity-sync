@@ -8,6 +8,8 @@ export interface SyncConfig {
   atprotoDid: string;
   blueskyUpdatesIdentifier: string;
   blueskyUpdatesDid: string;
+  mediaPdsService: string;
+  mediaPdsDid: string;
   foursquareAccessToken?: string;
   foursquareClientId?: string;
   foursquareClientSecret?: string;
@@ -57,6 +59,8 @@ export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
     atprotoDid,
     blueskyUpdatesIdentifier: optional(platform.env, 'BLUESKY_UPDATES_IDENTIFIER') ?? atprotoIdentifier,
     blueskyUpdatesDid: optional(platform.env, 'BLUESKY_UPDATES_DID') ?? atprotoDid,
+    mediaPdsService: (optional(platform.env, 'MEDIA_PDS_SERVICE') ?? 'https://eurosky.social').replace(/\/$/, ''),
+    mediaPdsDid: optional(platform.env, 'MEDIA_PDS_DID') ?? 'did:plc:vt4k6d3e5rjw65cuzaf3nufq',
     foursquareAccessToken: optionalOAuthToken(platform.env, 'FOURSQUARE_ACCESS_TOKEN') ?? optionalOAuthToken(platform.env, 'SWARM_ACCESS_TOKEN'),
     foursquareClientId: optional(platform.env, 'FOURSQUARE_CLIENT_ID'),
     foursquareClientSecret: optional(platform.env, 'FOURSQUARE_CLIENT_SECRET'),
@@ -73,6 +77,7 @@ export function configurationStatus(platform: App.Platform | undefined) {
     ghostActivityPub: Boolean(env?.GHOST_URL && env?.GHOST_STAFF_ACCESS_TOKEN),
     atproto: Boolean(env?.ATPROTO_SERVICE && env?.ATPROTO_IDENTIFIER && env?.ATPROTO_DID && env?.ATPROTO_APP_PASSWORD && env?.PUBLICATION_URI),
     blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID),
+    mediaPds: Boolean((env?.MEDIA_PDS_SERVICE || 'https://eurosky.social') && (env?.MEDIA_PDS_DID || 'did:plc:vt4k6d3e5rjw65cuzaf3nufq')),
     checkins: Boolean(env?.FOURSQUARE_ACCESS_TOKEN || env?.SWARM_ACCESS_TOKEN),
     checkinsTokenStore: Boolean(env?.CHECKINS_KV),
     checkinsOAuth: Boolean(env?.FOURSQUARE_CLIENT_ID && env?.FOURSQUARE_CLIENT_SECRET),

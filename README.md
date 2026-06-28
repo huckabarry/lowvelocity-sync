@@ -18,6 +18,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full operating model.
 - `POST /admin/import/crucial-tracks` — protected manual import of Crucial Tracks as native Ghost posts.
 - `POST /admin/import/checkins` — protected manual import of Swarm/Foursquare check-ins as native Ghost posts.
 - `POST /admin/import/checkins-pds` — protected manual import of archived PDS check-ins as native Ghost posts.
+- `POST /admin/import/popfeed` — protected manual import of canonical Afterword Popfeed media records from the personal PDS as native Ghost posts.
 - `POST /admin/cleanup/bluesky` — protected cleanup path for imported Bluesky posts.
 - `POST /admin/activitypub/test-note` — protected Ghost Social Web note test endpoint.
 - `POST /webhooks/ghost` — signed Ghost post synchronization webhook
@@ -44,8 +45,8 @@ patched Worker file before deployment.
 - Event-driven: Ghost webhooks sync eligible longform Ghost posts to
   Standard.site.
 
-Imported/status/listening/check-in posts are intentionally excluded from
-Standard.site sync.
+Imported/status/listening/check-in/Popfeed media posts are intentionally
+excluded from Standard.site sync.
 
 ## Development
 
@@ -80,6 +81,12 @@ npx wrangler secret put FOURSQUARE_ACCESS_TOKEN
 
 `CHECKINS_KV` stores the current Foursquare token from OAuth and last-run
 operation status for `/health`. It should not store user-facing content.
+
+`MEDIA_PDS_SERVICE` and `MEDIA_PDS_DID` point the manual Popfeed importer at
+the existing personal Afterword media records. They default to
+`https://eurosky.social` and `did:plc:vt4k6d3e5rjw65cuzaf3nufq`, but are kept as
+explicit Worker vars so the media/shadow PDS does not get confused with the Low
+Velocity Standard.site publication PDS.
 
 The Foursquare developer console redirect URL should be:
 
@@ -122,6 +129,11 @@ curl -X POST https://sync.lowvelocity.org/admin/import/checkins \
   -H "Authorization: Bearer $GHOST_STAFF_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"dryRun":false,"limit":20,"maxPages":2,"sinceTag":"check-ins"}'
+
+curl -X POST https://sync.lowvelocity.org/admin/import/popfeed \
+  -H "Authorization: Bearer $GHOST_STAFF_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun":true,"limit":50,"maxPages":20}'
 ```
 
 To reconnect Foursquare, visit:

@@ -9,7 +9,9 @@ const STANDARD_SITE_EXCLUDED_TAGS = new Set([
   '#bluesky',
   '#atproto',
   '#swarm',
-  '#foursquare'
+  '#foursquare',
+  '#popfeed',
+  '#pds'
 ]);
 
 function standardSiteExclusionReason(tags: Array<{ name?: string }> | undefined): string | null {

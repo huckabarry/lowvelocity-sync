@@ -9,6 +9,7 @@ import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
 import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
+import { ghostInputForPopfeedItem, type PopfeedImportItem } from '../src/lib/server/popfeed-native.ts';
 import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
 import { summarizeResult } from '../src/lib/server/ops-status.ts';
 import type { SyncConfig } from '../src/lib/server/config.ts';
@@ -23,6 +24,8 @@ const baseConfig: SyncConfig = {
   atprotoDid: 'did:plc:test',
   blueskyUpdatesIdentifier: 'bryan.eurosky.social',
   blueskyUpdatesDid: 'did:plc:updates',
+  mediaPdsService: 'https://eurosky.social',
+  mediaPdsDid: 'did:plc:media',
   foursquareClientId: 'client-id',
   foursquareClientSecret: 'client-secret',
   atprotoAppPassword: 'app-password',
@@ -253,6 +256,40 @@ test('builds idempotent native Ghost input for Swarm check-ins', () => {
   assert.match(input.html, /https:\/\/fastly\.example\/photo\/original\.jpg/);
 });
 
+test('builds idempotent native Ghost input for Popfeed media records', () => {
+  const item: PopfeedImportItem = {
+    uri: 'at://did:plc:media/blog.afterword.media.popfeedItem/3abc',
+    cid: 'bafy',
+    sourceUri: 'at://did:plc:media/social.popfeed.feed.listItem/3abc',
+    sourceRkey: '3abc',
+    type: 'book',
+    title: 'The City & Its Uncertain Life',
+    mainCredit: 'Jane Planner',
+    mainCreditRole: 'Author',
+    genres: ['Urbanism', 'Design'],
+    listType: 'read_books',
+    listName: 'Read',
+    identifiers: { isbn13: '9781234567890' },
+    activityLabel: 'Finished reading',
+    activityAt: '2026-06-20T12:00:00.000Z',
+    posterImage: 'https://eurosky.social/xrpc/com.atproto.sync.getBlob?did=did%3Aplc%3Amedia&cid=bafycover',
+    sourcePosterImage: null,
+    overrideStatus: 'approved',
+    links: [{ label: 'Open Library', url: 'https://openlibrary.org/isbn/9781234567890' }]
+  };
+  const input = ghostInputForPopfeedItem(item, 'https://lowvelocity.org/content/images/city.jpg');
+
+  assert.equal(input.slug, 'book-the-city-and-its-uncertain-life-3abc');
+  assert.equal(input.title, 'The City & Its Uncertain Life');
+  assert.equal(input.feature_image, 'https://lowvelocity.org/content/images/city.jpg');
+  assert.equal(input.published_at, '2026-06-20T12:00:00.000Z');
+  assert.deepEqual(input.tags, [{ name: 'books' }, { name: 'reading' }, { name: '#popfeed' }, { name: '#pds' }]);
+  assert.match(input.html, /data-popfeed-source-uri="at:\/\/did:plc:media\/social\.popfeed\.feed\.listItem\/3abc"/);
+  assert.match(input.html, /Finished reading/);
+  assert.match(input.html, /Jane Planner/);
+  assert.match(input.html, /Open Library/);
+});
+
 test('builds Foursquare OAuth authorization URL with the lowvelocity callback', async () => {
   const url = new URL(await buildFoursquareAuthorizationUrl(baseConfig, new URL('https://sync.lowvelocity.org/admin/checkins/connect')));
   assert.equal(url.origin + url.pathname, 'https://foursquare.com/oauth2/authenticate');
@@ -325,6 +362,8 @@ test('finds latest Ghost posts by public and internal tag slugs', async () => {
       atprotoDid: 'did:plc:test',
       blueskyUpdatesIdentifier: 'example.test',
       blueskyUpdatesDid: 'did:plc:test',
+      mediaPdsService: 'https://eurosky.social',
+      mediaPdsDid: 'did:plc:media',
       atprotoAppPassword: 'password',
       publicationUri: 'at://did:plc:test/site.standard.publication/self',
       standardSiteSyncEnabled: true

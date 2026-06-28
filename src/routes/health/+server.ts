@@ -32,6 +32,12 @@ export const GET: RequestHandler = async ({ platform }) => {
           destination: 'native Ghost posts tagged check-ins',
           last: operations.last.checkins
         },
+        popfeedMedia: {
+          cadence: 'manual only',
+          source: 'canonical Afterword Popfeed records on the personal PDS',
+          destination: 'native Ghost posts tagged #popfeed and excluded from Standard.site',
+          last: operations.last.popfeed
+        },
         ghostWebhook: {
           cadence: 'event-driven from Ghost webhooks',
           source: 'Ghost Admin webhook events',

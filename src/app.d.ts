@@ -18,6 +18,8 @@ declare global {
     BLUESKY_UPDATES_IDENTIFIER?: string;
     CHECKINS_KV?: KVNamespace;
     GHOST_URL: string;
+    MEDIA_PDS_DID?: string;
+    MEDIA_PDS_SERVICE?: string;
     PUBLICATION_URI: string;
     STANDARD_SITE_SYNC_ENABLED?: string;
   }
