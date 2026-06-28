@@ -29,6 +29,19 @@ function optional(env: App.Platform['env'], name: keyof App.Platform['env']): st
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 }
 
+function optionalOAuthToken(env: App.Platform['env'], name: keyof App.Platform['env']): string | undefined {
+  const value = optional(env, name);
+  if (!value) return undefined;
+
+  const bearer = value.match(/^Bearer\s+(.+)$/i);
+  if (bearer) return bearer[1].trim();
+
+  const tokenParam = value.match(/(?:access_token|oauth_token)=([^&#\s]+)/i);
+  if (tokenParam) return decodeURIComponent(tokenParam[1]).trim();
+
+  return value;
+}
+
 export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
   if (!platform) throw new Error('Cloudflare platform bindings are unavailable');
   const atprotoIdentifier = required(platform.env, 'ATPROTO_IDENTIFIER');
@@ -44,7 +57,7 @@ export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
     atprotoDid,
     blueskyUpdatesIdentifier: optional(platform.env, 'BLUESKY_UPDATES_IDENTIFIER') ?? atprotoIdentifier,
     blueskyUpdatesDid: optional(platform.env, 'BLUESKY_UPDATES_DID') ?? atprotoDid,
-    foursquareAccessToken: optional(platform.env, 'FOURSQUARE_ACCESS_TOKEN') ?? optional(platform.env, 'SWARM_ACCESS_TOKEN'),
+    foursquareAccessToken: optionalOAuthToken(platform.env, 'FOURSQUARE_ACCESS_TOKEN') ?? optionalOAuthToken(platform.env, 'SWARM_ACCESS_TOKEN'),
     foursquareClientId: optional(platform.env, 'FOURSQUARE_CLIENT_ID'),
     foursquareClientSecret: optional(platform.env, 'FOURSQUARE_CLIENT_SECRET'),
     atprotoAppPassword: required(platform.env, 'ATPROTO_APP_PASSWORD'),

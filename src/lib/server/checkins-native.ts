@@ -202,12 +202,12 @@ function venueUrl(checkin: SwarmCheckin): string {
 async function fetchFoursquareJson<T>(path: string, accessToken: string, params = new URLSearchParams()): Promise<T> {
   const url = new URL(`${FOURSQUARE_API_BASE}${path}`);
   url.searchParams.set('v', FOURSQUARE_API_VERSION);
+  url.searchParams.set('oauth_token', accessToken);
   for (const [key, value] of params) url.searchParams.set(key, value);
 
   const response = await fetch(url, {
     headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${accessToken}`
+      Accept: 'application/json'
     }
   });
 
