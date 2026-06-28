@@ -2,6 +2,8 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSyncConfig } from '$lib/server/config';
 import { exchangeFoursquareCodeForAccessToken, foursquareRedirectUri, verifyFoursquareOAuthState } from '$lib/server/foursquare-oauth';
+import { hasCheckinsTokenStore, writeStoredFoursquareAccessToken } from '$lib/server/checkins-token-store';
+import { verifyFoursquareAccessToken } from '$lib/server/checkins-native';
 
 function escapeHtml(value: string): string {
   return value
@@ -12,8 +14,13 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function tokenResponse(accessToken: string): Response {
+function tokenResponse(accessToken: string, storage: { available: boolean; stored: boolean }): Response {
   const escapedToken = escapeHtml(accessToken);
+  const storageMessage = storage.stored
+    ? 'Verified and saved in Worker KV. Scheduled imports can use it automatically.'
+    : storage.available
+      ? 'The token verified, but I could not save it in Worker KV. Add it to Cloudflare as FOURSQUARE_ACCESS_TOKEN.'
+      : 'Worker KV is not bound yet. Add this token to Cloudflare as FOURSQUARE_ACCESS_TOKEN, or bind CHECKINS_KV for automatic storage.';
   return new Response(`<!doctype html>
 <html lang="en">
 <head>
@@ -65,8 +72,9 @@ function tokenResponse(accessToken: string): Response {
 <body>
   <main>
     <h1>Foursquare connected</h1>
-    <p>This is your Foursquare access token. I’m testing it against your check-in history now. If it verifies, add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>.</p>
+    <p>This is your Foursquare access token. I’m testing it against your check-in history now.</p>
     <div id="verify-status" class="status">Testing token…</div>
+    <div class="status ${storage.stored ? 'ok' : ''}">${escapeHtml(storageMessage)}</div>
     <pre>${escapedToken}</pre>
     <p>With Wrangler:</p>
     <pre>npx wrangler secret put FOURSQUARE_ACCESS_TOKEN --name lowvelocity-sync</pre>
@@ -158,7 +166,7 @@ function callbackHelpResponse(): Response {
   <main>
     <h1>Foursquare callback</h1>
     <div id="token-result" class="hidden">
-      <p>This is your Foursquare access token. Add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>.</p>
+      <p>This is your Foursquare access token. If Worker KV is bound, I’ll save it automatically after verification. Otherwise add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>.</p>
       <div id="verify-status" class="status">Testing token…</div>
       <pre id="token"></pre>
       <p>With Wrangler:</p>
@@ -173,6 +181,7 @@ function callbackHelpResponse(): Response {
     (function () {
       var params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
       var token = params.get('access_token');
+      var state = params.get('state');
       if (!token) return;
       document.getElementById('token').textContent = token;
       document.getElementById('token-result').classList.remove('hidden');
@@ -182,14 +191,14 @@ function callbackHelpResponse(): Response {
       fetch('/admin/checkins/verify', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({accessToken: token})
+        body: JSON.stringify({accessToken: token, store: true, state: state})
       }).then(function (response) {
         return response.json().then(function (result) {
           if (!response.ok || !result.ok) {
             throw new Error(result.detail || result.error || 'Token verification failed');
           }
           box.className = 'status ok';
-          box.textContent = 'Verified. This token can read ' + result.count + ' Foursquare/Swarm check-ins' + (result.latest ? '. Latest: ' + result.latest.title + '.' : '.');
+          box.textContent = 'Verified. This token can read ' + result.count + ' Foursquare/Swarm check-ins' + (result.latest ? '. Latest: ' + result.latest.title + '.' : '.') + (result.stored ? ' Saved in Worker KV.' : ' Not saved automatically; add it as FOURSQUARE_ACCESS_TOKEN.');
         });
       }).catch(function (error) {
         box.className = 'status error';
@@ -223,5 +232,10 @@ export const GET: RequestHandler = async ({ platform, url }) => {
   }
 
   const accessToken = await exchangeFoursquareCodeForAccessToken(config, code, redirectUri);
-  return tokenResponse(accessToken);
+  await verifyFoursquareAccessToken(accessToken);
+  const storage = {
+    available: hasCheckinsTokenStore(platform),
+    stored: await writeStoredFoursquareAccessToken(platform, accessToken)
+  };
+  return tokenResponse(accessToken, storage);
 };

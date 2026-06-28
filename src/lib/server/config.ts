@@ -74,6 +74,7 @@ export function configurationStatus(platform: App.Platform | undefined) {
     atproto: Boolean(env?.ATPROTO_SERVICE && env?.ATPROTO_IDENTIFIER && env?.ATPROTO_DID && env?.ATPROTO_APP_PASSWORD && env?.PUBLICATION_URI),
     blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID),
     checkins: Boolean(env?.FOURSQUARE_ACCESS_TOKEN || env?.SWARM_ACCESS_TOKEN),
+    checkinsTokenStore: Boolean(env?.CHECKINS_KV),
     checkinsOAuth: Boolean(env?.FOURSQUARE_CLIENT_ID && env?.FOURSQUARE_CLIENT_SECRET),
     standardSiteSyncEnabled: env?.STANDARD_SITE_SYNC_ENABLED !== 'false'
   };

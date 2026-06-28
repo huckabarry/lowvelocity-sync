@@ -49,6 +49,7 @@ export type SwarmCheckin = {
 };
 
 export interface ImportSwarmCheckinsOptions {
+  accessToken?: string;
   dryRun?: boolean;
   limit?: number;
   offset?: number;
@@ -259,7 +260,7 @@ export async function verifyConfiguredFoursquareAccess(config: SyncConfig) {
 }
 
 async function readSwarmCheckinsWindow(config: SyncConfig, options: ImportSwarmCheckinsOptions) {
-  const accessToken = config.foursquareAccessToken;
+  const accessToken = normalizeString(options.accessToken) || config.foursquareAccessToken;
   if (!accessToken) {
     throw new Error('Set FOURSQUARE_ACCESS_TOKEN or SWARM_ACCESS_TOKEN before importing check-ins');
   }

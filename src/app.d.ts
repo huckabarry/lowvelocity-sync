@@ -16,6 +16,7 @@ declare global {
     ATPROTO_SERVICE: string;
     BLUESKY_UPDATES_DID?: string;
     BLUESKY_UPDATES_IDENTIFIER?: string;
+    CHECKINS_KV?: KVNamespace;
     GHOST_URL: string;
     PUBLICATION_URI: string;
     STANDARD_SITE_SYNC_ENABLED?: string;

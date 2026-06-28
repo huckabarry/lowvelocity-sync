@@ -24,6 +24,12 @@
   "triggers": {
     "crons": ["* * * * *"]
   },
+  "kv_namespaces": [
+    {
+      "binding": "CHECKINS_KV",
+      "id": "7170a4243d36412f9b06a28d3c170875"
+    }
+  ],
   "assets": {
     "binding": "ASSETS",
     "directory": ".svelte-kit/cloudflare",

@@ -44,10 +44,11 @@ async function runScheduledBlueskyImport(env2, controller) {
 async function runScheduledCheckinsImport(env2, controller) {
   const token = String(env2.GHOST_STAFF_ACCESS_TOKEN || '').trim();
   const foursquareToken = String(env2.FOURSQUARE_ACCESS_TOKEN || env2.SWARM_ACCESS_TOKEN || '').trim();
-  if (!token || !foursquareToken) {
+  const hasCheckinsTokenStore = Boolean(env2.CHECKINS_KV);
+  if (!token || (!foursquareToken && !hasCheckinsTokenStore)) {
     console.log(JSON.stringify({
       message: 'scheduled check-ins import skipped',
-      reason: !token ? 'missing Ghost staff token' : 'missing Foursquare access token',
+      reason: !token ? 'missing Ghost staff token' : 'missing Foursquare access token or CHECKINS_KV binding',
       cron: controller?.cron || ''
     }));
     return;

@@ -88,8 +88,8 @@ function connectPage(codeUrl: string, tokenUrl: string, callbackUrl: string): Re
 
 export const GET: RequestHandler = async ({ platform, url }) => {
   const config = getSyncConfig(platform);
-  const codeUrl = await buildFoursquareAuthorizationUrl(config, url, { responseType: 'code' });
-  const tokenUrl = await buildFoursquareAuthorizationUrl(config, url, { responseType: 'token' });
+  const codeUrl = await buildFoursquareAuthorizationUrl(config, url, { responseType: 'code', includeState: true });
+  const tokenUrl = await buildFoursquareAuthorizationUrl(config, url, { responseType: 'token', includeState: true });
 
   if (url.searchParams.get('go') === '1') {
     throw redirect(302, codeUrl);

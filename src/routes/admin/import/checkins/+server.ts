@@ -4,6 +4,7 @@ import { getSyncConfig } from '$lib/server/config';
 import { timingSafeStringEqual } from '$lib/server/crypto';
 import { findLatestGhostPostByTag } from '$lib/server/ghost';
 import { importSwarmCheckins } from '$lib/server/checkins-native';
+import { resolveFoursquareAccessToken } from '$lib/server/checkins-token-store';
 
 interface ImportBody {
   dryRun?: boolean;
@@ -68,7 +69,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     }
 
     const dryRun = body.dryRun !== false;
+    const tokenResolution = await resolveFoursquareAccessToken(config, platform);
     const importResult = await importSwarmCheckins(config, {
+      accessToken: tokenResolution.accessToken,
       dryRun,
       limit: body.limit,
       offset: body.offset,
@@ -79,8 +82,16 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       uploadImages: body.uploadImages
     });
 
-    console.log(JSON.stringify({ message: 'check-ins native import processed', requestId, dryRun, sinceBoundary, resolvedSince, ...importResult }));
-    return json({ ok: true, requestId, dryRun, sinceBoundary, resolvedSince, ...importResult });
+    console.log(JSON.stringify({
+      message: 'check-ins native import processed',
+      requestId,
+      dryRun,
+      tokenSource: tokenResolution.source,
+      sinceBoundary,
+      resolvedSince,
+      ...importResult
+    }));
+    return json({ ok: true, requestId, dryRun, tokenSource: tokenResolution.source, sinceBoundary, resolvedSince, ...importResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'check-ins native import failed', requestId, error: message }));
