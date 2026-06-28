@@ -179,6 +179,8 @@ export interface GhostHtmlEntryInput {
   html: string;
   custom_excerpt?: string | null;
   feature_image?: string | null;
+  codeinjection_head?: string | null;
+  codeinjection_foot?: string | null;
   published_at?: string;
   tags?: Array<{ name: string }>;
   status?: 'draft' | 'published';

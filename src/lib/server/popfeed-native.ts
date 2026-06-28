@@ -346,12 +346,20 @@ function metadataLine(label: string, value: string): string {
   return `<li><span>${escapeHtml(label)}</span> ${escapeHtml(value)}</li>`;
 }
 
+function jsonScriptEscape(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function popfeedPostHtml(item: PopfeedImportItem): string {
   const credit = item.mainCredit
     ? `<p class="lv-popfeed-credit">${escapeHtml(item.mainCreditRole || 'By')} ${escapeHtml(item.mainCredit)}</p>`
     : '';
   const genres = item.genres.length ? metadataLine('Genres', item.genres.slice(0, 5).join(', ')) : '';
-  const source = item.sourceUri ? metadataLine('Source', item.sourceUri) : '';
   const identifiers = Object.entries(item.identifiers)
     .slice(0, 4)
     .map(([key, value]) => metadataLine(key, value))
@@ -373,11 +381,28 @@ function popfeedPostHtml(item: PopfeedImportItem): string {
     credit,
     '<section class="lv-popfeed-details">',
     `<h2>${escapeHtml(mediaNoun(item.type))}</h2>`,
-    `<ul>${[genres, identifiers, source].filter(Boolean).join('\n')}</ul>`,
+    `<ul>${[genres, identifiers].filter(Boolean).join('\n')}</ul>`,
     links ? `<p class="lv-popfeed-links">${links}</p>` : '',
     '</section>',
     '</article>'
   ].filter(Boolean).join('\n');
+}
+
+function popfeedCodeInjection(item: PopfeedImportItem): string {
+  return [
+    '<script type="application/json" id="lowvelocity-popfeed-source">',
+    jsonScriptEscape({
+      source: 'pds-popfeed',
+      uri: item.uri,
+      cid: item.cid ?? null,
+      sourceUri: item.sourceUri,
+      sourceRkey: item.sourceRkey,
+      type: item.type,
+      listType: item.listType,
+      identifiers: item.identifiers
+    }),
+    '</script>'
+  ].join('');
 }
 
 function popfeedExcerpt(item: PopfeedImportItem): string {
@@ -396,6 +421,7 @@ export function ghostInputForPopfeedItem(item: PopfeedImportItem, featureImage: 
     html: popfeedPostHtml(item),
     custom_excerpt: popfeedExcerpt(item),
     feature_image: featureImage,
+    codeinjection_foot: popfeedCodeInjection(item),
     published_at: item.activityAt,
     tags: popfeedTags(item),
     status: 'published' as const

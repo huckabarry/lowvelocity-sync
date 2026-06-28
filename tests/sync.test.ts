@@ -285,6 +285,9 @@ test('builds idempotent native Ghost input for Popfeed media records', () => {
   assert.equal(input.published_at, '2026-06-20T12:00:00.000Z');
   assert.deepEqual(input.tags, [{ name: 'books' }, { name: 'reading' }, { name: '#popfeed' }, { name: '#pds' }]);
   assert.match(input.html, /data-popfeed-source-uri="at:\/\/did:plc:media\/social\.popfeed\.feed\.listItem\/3abc"/);
+  assert.doesNotMatch(input.html, /Source at:\/\//);
+  assert.match(input.codeinjection_foot ?? '', /lowvelocity-popfeed-source/);
+  assert.match(input.codeinjection_foot ?? '', /"sourceUri":"at:\/\/did:plc:media\/social\.popfeed\.feed\.listItem\/3abc"/);
   assert.match(input.html, /Finished reading/);
   assert.match(input.html, /Jane Planner/);
   assert.match(input.html, /Open Library/);
