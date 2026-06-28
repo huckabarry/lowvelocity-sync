@@ -1,6 +1,6 @@
 name: Import Crucial Tracks to Ghost
 
-"on":
+on:
   workflow_dispatch:
     inputs:
       dry_run:
