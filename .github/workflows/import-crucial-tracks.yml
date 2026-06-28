@@ -1,6 +1,6 @@
 name: Import Crucial Tracks to Ghost
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,11 +20,7 @@ on:
       order:
         description: Import order: asc for backfill, desc for latest-first checks
         required: true
-        type: choice
         default: asc
-        options:
-          - asc
-          - desc
 
 permissions:
   contents: read
