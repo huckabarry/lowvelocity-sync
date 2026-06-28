@@ -92,6 +92,56 @@ async function runScheduledCheckinsImport(env2, controller) {
     result: text ? JSON.parse(text) : null
   }));
 }
+
+async function runScheduledCrucialTracksImport(env2, controller) {
+  const token = String(env2.GHOST_STAFF_ACCESS_TOKEN || '').trim();
+  if (!token) {
+    console.log(JSON.stringify({
+      message: 'scheduled Crucial Tracks import skipped',
+      reason: 'missing Ghost staff token',
+      cron: controller?.cron || ''
+    }));
+    return;
+  }
+
+  const scheduledTime = Number(controller?.scheduledTime || Date.now());
+  const minute = new Date(scheduledTime).getUTCMinutes();
+  if (minute % 5 !== 0) return;
+
+  const baseUrl = String(env2.SYNC_BASE_URL || 'https://sync.lowvelocity.org').replace(/\\/$/, '');
+  const response = await fetch(\`\${baseUrl}/admin/import/crucial-tracks\`, {
+    method: 'POST',
+    headers: {
+      Authorization: \`Bearer \${token}\`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      dryRun: false,
+      updateExisting: false,
+      ensurePage: false,
+      limit: 3,
+      offset: 0
+    })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    console.warn(JSON.stringify({
+      message: 'scheduled Crucial Tracks import failed',
+      cron: controller?.cron || '',
+      status: response.status,
+      result: text
+    }));
+    return;
+  }
+
+  console.log(JSON.stringify({
+    message: 'scheduled Crucial Tracks import processed',
+    cron: controller?.cron || '',
+    status: response.status,
+    result: text ? JSON.parse(text) : null
+  }));
+}
 `;
 
 let source = await readFile(workerPath, 'utf8');
@@ -112,6 +162,7 @@ if (!source.includes(marker)) {
     void ctx;
     await runScheduledBlueskyImport(env2, controller);
     await runScheduledCheckinsImport(env2, controller);
+    await runScheduledCrucialTracksImport(env2, controller);
   },
 ` +
     source.slice(index + target.length);

@@ -8,7 +8,24 @@ export const GET: RequestHandler = ({ platform }) => {
     {
       service: 'lowvelocity-sync',
       status: configured.ghost && configured.atproto ? 'ready' : 'configuration-required',
-      configured
+      configured,
+      scheduledImports: {
+        blueskyNativePosts: {
+          cadence: 'every minute',
+          source: 'Bluesky appview',
+          destination: 'native Ghost posts tagged #bluesky'
+        },
+        crucialTracks: {
+          cadence: 'every 5 minutes',
+          source: 'Crucial Tracks feed/archive',
+          destination: 'native Ghost posts tagged listening and #crucialtracks'
+        },
+        checkins: {
+          cadence: 'every 15 minutes when Foursquare token verifies',
+          source: 'Foursquare/Swarm user check-ins',
+          destination: 'native Ghost posts tagged check-ins'
+        }
+      }
     },
     {
       headers: {

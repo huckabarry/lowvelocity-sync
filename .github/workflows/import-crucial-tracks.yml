@@ -1,10 +1,6 @@
 name: Import Crucial Tracks to Ghost
 
 on:
-  schedule:
-    # Backup sweep only. New Crucial Tracks archive commits trigger an immediate
-    # import from huckabarry/afterword-sveltekit-pds.
-    - cron: "17 */6 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
