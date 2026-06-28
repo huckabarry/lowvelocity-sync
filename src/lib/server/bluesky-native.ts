@@ -171,12 +171,13 @@ function quoteHtml(quote: BlueskyUpdateQuote): string {
   const authorHtml = url
     ? `<strong><a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(author)}</a></strong>`
     : `<strong>${escapeHtml(author)}</strong>`;
+  const quoteUrlAttribute = url ? ` data-atproto-quote-url="${escapeHtml(url)}"` : '';
   return [
-    `<blockquote cite="${escapeHtml(url || quote.uri)}" class="lv-atproto-quote">`,
+    `<aside class="lv-atproto-quote" data-atproto-quote="${escapeHtml(quote.uri)}"${quoteUrlAttribute}>`,
     `<p>${authorHtml}</p>`,
     content,
     embedHtml,
-    '</blockquote>'
+    '</aside>'
   ].filter(Boolean).join('\n');
 }
 

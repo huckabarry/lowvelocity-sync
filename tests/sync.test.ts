@@ -215,7 +215,7 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.match(input.html, /class="kg-bookmark-thumbnail"><img src="https:\/\/cdn\.example\/article\.jpg"/);
   assert.match(input.html, /class="kg-image status-external-gif" src="https:\/\/media\.example\/animated\.gif"/);
   assert.match(input.html, /class="kg-card kg-video-card lv-atproto-video status-video"/);
-  assert.match(input.html, /<blockquote cite="https:\/\/bsky\.app\/profile\/quoted\.example\/post\/3quote" class="lv-atproto-quote">/);
+  assert.match(input.html, /<aside class="lv-atproto-quote" data-atproto-quote="at:\/\/did:plc:quote\/app\.bsky\.feed\.post\/3quote" data-atproto-quote-url="https:\/\/bsky\.app\/profile\/quoted\.example\/post\/3quote">/);
   assert.match(input.html, /Quoted Person/);
   assert.match(input.html, /https:\/\/cdn\.example\/quote-photo\.jpg/);
   assert.match(input.html, /https:\/\/cdn\.example\/quoted-article\.jpg/);
