@@ -42,6 +42,9 @@ patched Worker file before deployment.
   `#crucialtracks`.
 - Every 15 minutes: import newest Foursquare/Swarm check-ins into Ghost as
   `check-ins`, `#swarm`, and `#foursquare` when a token is available.
+- Every 3 hours: import newly seen completed/read/watched Popfeed media records
+  from the personal PDS into Ghost as books/movies/shows/reading/watching with
+  `#popfeed` and `#pds`.
 - Event-driven: Ghost webhooks sync eligible longform Ghost posts to
   Standard.site.
 
@@ -82,8 +85,8 @@ npx wrangler secret put FOURSQUARE_ACCESS_TOKEN
 `CHECKINS_KV` stores the current Foursquare token from OAuth and last-run
 operation status for `/health`. It should not store user-facing content.
 
-`MEDIA_PDS_SERVICE` and `MEDIA_PDS_DID` point the manual Popfeed importer at
-the existing personal Afterword media records. They default to
+`MEDIA_PDS_SERVICE` and `MEDIA_PDS_DID` point the Popfeed importer at the
+existing personal Afterword media records. They default to
 `https://eurosky.social` and `did:plc:vt4k6d3e5rjw65cuzaf3nufq`, but are kept as
 explicit Worker vars so the media/shadow PDS does not get confused with the Low
 Velocity Standard.site publication PDS.

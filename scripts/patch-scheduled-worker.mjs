@@ -10,7 +10,8 @@ function assertScheduledPatch(source) {
     'worker_default.fetch(request, env2, ctx)',
     'runScheduledBlueskyImport(env2, ctx, controller)',
     'runScheduledCheckinsImport(env2, ctx, controller)',
-    'runScheduledCrucialTracksImport(env2, ctx, controller)'
+    'runScheduledCrucialTracksImport(env2, ctx, controller)',
+    'runScheduledPopfeedImport(env2, ctx, controller)'
   ];
 
   const missing = required.filter((value) => !source.includes(value));
@@ -128,6 +129,26 @@ async function runScheduledCrucialTracksImport(env2, ctx, controller) {
     }
   });
 }
+
+async function runScheduledPopfeedImport(env2, ctx, controller) {
+  const scheduledTime = Number(controller?.scheduledTime || Date.now());
+  const date = new Date(scheduledTime);
+  if (date.getUTCMinutes() !== 0 || date.getUTCHours() % 3 !== 0) return;
+
+  await runScheduledImport(env2, ctx, controller, {
+    name: 'Popfeed media',
+    path: '/admin/import/popfeed',
+    body: {
+      dryRun: false,
+      updateExisting: false,
+      uploadImages: true,
+      includeCurrentlyReading: false,
+      limit: 25,
+      offset: 0,
+      maxPages: 20
+    }
+  });
+}
 `;
 
 let source = await readFile(workerPath, 'utf8');
@@ -148,6 +169,7 @@ if (!source.includes(marker)) {
     await runScheduledBlueskyImport(env2, ctx, controller);
     await runScheduledCheckinsImport(env2, ctx, controller);
     await runScheduledCrucialTracksImport(env2, ctx, controller);
+    await runScheduledPopfeedImport(env2, ctx, controller);
   },
 ` +
     source.slice(index + target.length);

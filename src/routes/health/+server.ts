@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ platform }) => {
           last: operations.last.checkins
         },
         popfeedMedia: {
-          cadence: 'manual only',
+          cadence: 'every 3 hours',
           source: 'canonical Afterword Popfeed records on the personal PDS',
           destination: 'native Ghost posts tagged #popfeed and excluded from Standard.site',
           last: operations.last.popfeed

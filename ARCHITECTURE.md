@@ -22,6 +22,7 @@ down.
 | Bluesky to Ghost updates | Worker cron every minute | `bryan.eurosky.social` | Native Ghost posts | `updates`, `#bluesky`, `#atproto` |
 | Crucial Tracks to Ghost listening | Worker cron every 5 minutes | Crucial Tracks feed/archive | Native Ghost posts | `listening`, `#crucialtracks` |
 | Foursquare/Swarm to Ghost check-ins | Worker cron every 15 minutes | Foursquare user check-ins | Native Ghost posts | `check-ins`, `#swarm`, `#foursquare` |
+| Popfeed media to Ghost | Worker cron every 3 hours | Canonical Afterword PDS media records | Native Ghost posts | books/movies/shows/reading/watching, `#popfeed`, `#pds` |
 
 Imported Bluesky, Crucial Tracks, check-in, and Popfeed media posts are
 intentionally excluded from Standard.site sync. The exclusion list lives in
@@ -36,9 +37,9 @@ intentionally excluded from Standard.site sync. The exclusion list lives in
 - The Ghost theme deploys from `huckabarry/lowvelocity`; this Worker deploys
   from `huckabarry/lowvelocity-sync`.
 
-### Popfeed/media backfill
+### Popfeed/media import
 
-Popfeed books, movies, and shows are imported manually from existing canonical
+Popfeed books, movies, and shows are imported from existing canonical
 Afterword PDS records in `blog.afterword.media.popfeedItem` on the personal PDS
 (`MEDIA_PDS_DID` / `MEDIA_PDS_SERVICE`). The importer applies approved
 `blog.afterword.media.popfeedOverride` records for better cover art, uploads
@@ -46,11 +47,11 @@ cover/poster images to Ghost during real imports, and creates native Ghost posts
 tagged with `#popfeed` and `#pds`.
 
 This flow intentionally does not read live Popfeed during page rendering and is
-not scheduled as a cron. By default it imports finished/read books, watched
-movies, and watched shows. Currently-reading/currently-watching records can be
-included manually, but the conservative default keeps transient states,
-watchlists, and want-to-read records out of Ghost unless that policy changes
-later.
+scheduled conservatively every 3 hours. By default it imports finished/read
+books, watched movies, and watched shows. Currently-reading/currently-watching
+records can be included manually, but the conservative default keeps transient
+states, watchlists, and want-to-read records out of Ghost unless that policy
+changes later.
 
 The manual GitHub Action pages through the importer with `offset` /
 `nextOffset`, allowing full backfills without making one large Worker request.
@@ -95,8 +96,8 @@ GitHub Actions also needs `CLOUDFLARE_ACCOUNT_ID` and
 
 - configuration readiness flags
 - expected scheduled import cadences
-- last-run status for Bluesky, Crucial Tracks, Foursquare check-ins, manual
-  Popfeed imports, and Ghost webhooks when `CHECKINS_KV` is available
+- last-run status for Bluesky, Crucial Tracks, Foursquare check-ins, Popfeed
+  imports, and Ghost webhooks when `CHECKINS_KV` is available
 
 The last-run records are deliberately small summaries. They avoid secrets and
 avoid storing full imported content.
@@ -115,7 +116,7 @@ over public HTTP. That avoids Worker-to-itself edge/network failures while
 preserving the same protected admin import endpoints used by manual workflows.
 
 The patch script verifies that the generated Worker contains the scheduled
-handler, all three import calls, and the internal dispatch path, so future build
+handler, all import calls, and the internal dispatch path, so future build
 shape changes fail loudly.
 
 If this is refactored later, preserve these behaviors:
@@ -123,6 +124,8 @@ If this is refactored later, preserve these behaviors:
 - Bluesky import every minute.
 - Crucial Tracks import only when UTC minute is divisible by 5.
 - Check-ins import only when UTC minute is divisible by 15.
+- Popfeed media import only when UTC minute is 0 and the UTC hour is divisible
+  by 3.
 - Missing Foursquare tokens should skip check-ins, not fail the whole cron.
 - Individual importer endpoint failures should not prevent the other scheduled
   imports from running.
