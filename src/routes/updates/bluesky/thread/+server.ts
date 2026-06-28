@@ -27,6 +27,11 @@ function cacheKey(request: Request, uri: string): Request {
   return new Request(url.toString(), { method: 'GET' });
 }
 
+function defaultCache(platform: App.Platform | undefined): Cache | undefined {
+  const storage = platform?.caches ?? (typeof caches !== 'undefined' ? caches : undefined);
+  return (storage as CacheStorage & { default?: Cache } | undefined)?.default;
+}
+
 export const OPTIONS: RequestHandler = () => {
   return new Response(null, {
     status: 204,
@@ -47,7 +52,7 @@ export const GET: RequestHandler = async ({ request, platform }) => {
     const uri = requestedUri || (requestedRkey ? blueskyPostUriFromRkey(config.blueskyUpdatesDid, requestedRkey) : '');
     if (!uri) return json({ error: 'missing uri or rkey' }, { status: 400, headers: responseHeaders('skip') });
 
-    const cache = platform?.caches?.default ?? (typeof caches !== 'undefined' ? caches.default : undefined);
+    const cache = defaultCache(platform);
     const key = cacheKey(request, uri);
 
     if (cache) {

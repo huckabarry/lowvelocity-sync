@@ -7,3 +7,6 @@ node_modules
 .env
 .env.*
 !.env.example
+
+# macOS/Finder conflict copies of generated Wrangler types.
+worker-configuration.d *.ts

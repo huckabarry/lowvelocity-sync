@@ -5,6 +5,7 @@ import { timingSafeStringEqual } from '$lib/server/crypto';
 import { findLatestGhostPostByTag } from '$lib/server/ghost';
 import { importSwarmCheckins } from '$lib/server/checkins-native';
 import { resolveFoursquareAccessToken } from '$lib/server/checkins-token-store';
+import { summarizeResult, writeOpsStatus } from '$lib/server/ops-status';
 
 interface ImportBody {
   dryRun?: boolean;
@@ -91,10 +92,23 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       resolvedSince,
       ...importResult
     }));
+    await writeOpsStatus(platform, {
+      flow: 'checkins',
+      outcome: 'ok',
+      requestId,
+      message: dryRun ? 'Foursquare check-ins dry-run import processed' : 'Foursquare check-ins import processed',
+      summary: summarizeResult({ tokenSource: tokenResolution.source, ...importResult })
+    });
     return json({ ok: true, requestId, dryRun, tokenSource: tokenResolution.source, sinceBoundary, resolvedSince, ...importResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'check-ins native import failed', requestId, error: message }));
+    await writeOpsStatus(platform, {
+      flow: 'checkins',
+      outcome: 'error',
+      requestId,
+      message
+    });
     return json({ error: 'check-ins native import failed', detail: message, requestId }, { status: 500 });
   }
 };

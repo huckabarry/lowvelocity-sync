@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { getSyncConfig } from '$lib/server/config';
 import { verifyGhostSignature } from '$lib/server/crypto';
 import { removePublishedPost, syncPublishedPost } from '$lib/server/sync';
+import { summarizeResult, writeOpsStatus } from '$lib/server/ops-status';
 
 interface WebhookPostState { id?: string; slug?: string; status?: string; url?: string; }
 interface GhostWebhookBody { post?: { current?: WebhookPostState; previous?: WebhookPostState; }; }
@@ -45,10 +46,23 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         ? await removePublishedPost(config, postId, path)
         : { action: 'ignore' as const, postId };
     console.log(JSON.stringify({ message: 'webhook processed', requestId, ...result }));
+    await writeOpsStatus(platform, {
+      flow: 'ghostWebhook',
+      outcome: result.action === 'ignore' || result.action.startsWith('skip') ? 'skipped' : 'ok',
+      requestId,
+      message: 'Ghost webhook processed',
+      summary: summarizeResult(result)
+    });
     return json({ ok: true, requestId, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'webhook failed', requestId, error: message }));
+    await writeOpsStatus(platform, {
+      flow: 'ghostWebhook',
+      outcome: 'error',
+      requestId,
+      message
+    });
     return json({ error: 'synchronization failed', requestId }, { status: 500 });
   }
 };

@@ -3,6 +3,21 @@ import { readFile, writeFile } from 'node:fs/promises';
 const workerPath = '.svelte-kit/cloudflare/_worker.js';
 const marker = 'lowvelocity-scheduled-imports';
 
+function assertScheduledPatch(source) {
+  const required = [
+    marker,
+    'async scheduled(controller, env2, ctx)',
+    'runScheduledBlueskyImport(env2, controller)',
+    'runScheduledCheckinsImport(env2, controller)',
+    'runScheduledCrucialTracksImport(env2, controller)'
+  ];
+
+  const missing = required.filter((value) => !source.includes(value));
+  if (missing.length) {
+    throw new Error(`Scheduled importer patch is incomplete. Missing: ${missing.join(', ')}`);
+  }
+}
+
 const scheduledHelper = `
 // ${marker}
 async function runScheduledBlueskyImport(env2, controller) {
@@ -174,3 +189,5 @@ if (!source.includes(marker)) {
 } else {
   console.log(`${workerPath} already contains scheduled importers`);
 }
+
+assertScheduledPatch(source);

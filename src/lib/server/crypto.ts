@@ -13,6 +13,12 @@ function hexToBytes(hex: string): Uint8Array {
   return Uint8Array.from(hex.match(/.{2}/g) ?? [], (pair) => Number.parseInt(pair, 16));
 }
 
+function bufferSource(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer as ArrayBuffer;
+}
+
 export async function createGhostAdminToken(apiKey: string, now = Date.now()): Promise<string> {
   const [id, secretHex, extra] = apiKey.split(':');
   if (!id || !secretHex || extra) throw new Error('Ghost Admin API key has an invalid format');
@@ -20,8 +26,8 @@ export async function createGhostAdminToken(apiKey: string, now = Date.now()): P
   const header = bytesToBase64Url(encoder.encode(JSON.stringify({ alg: 'HS256', kid: id, typ: 'JWT' })));
   const payload = bytesToBase64Url(encoder.encode(JSON.stringify({ iat: issuedAt, exp: issuedAt + 300, aud: '/admin/' })));
   const unsigned = `${header}.${payload}`;
-  const key = await crypto.subtle.importKey('raw', hexToBytes(secretHex), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(unsigned)));
+  const key = await crypto.subtle.importKey('raw', bufferSource(hexToBytes(secretHex)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, bufferSource(encoder.encode(unsigned))));
   return `${unsigned}.${bytesToBase64Url(signature)}`;
 }
 
@@ -66,9 +72,9 @@ export async function verifyGhostSignature(body: Uint8Array, header: string, sec
   const signed = new Uint8Array(body.byteLength + timestamp.byteLength);
   signed.set(body);
   signed.set(timestamp, body.byteLength);
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-  if (await crypto.subtle.verify('HMAC', key, parsed.digest, signed)) return true;
+  const key = await crypto.subtle.importKey('raw', bufferSource(encoder.encode(secret)), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  if (await crypto.subtle.verify('HMAC', key, bufferSource(parsed.digest), bufferSource(signed))) return true;
   // Ghost installations have emitted both timestamp-bound and body-only
   // signatures. The timestamp freshness check above still prevents replay.
-  return crypto.subtle.verify('HMAC', key, parsed.digest, body);
+  return crypto.subtle.verify('HMAC', key, bufferSource(parsed.digest), bufferSource(body));
 }

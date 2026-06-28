@@ -4,6 +4,7 @@ import { getSyncConfig } from '$lib/server/config';
 import { timingSafeStringEqual } from '$lib/server/crypto';
 import { importBlueskyPosts } from '$lib/server/bluesky-native';
 import { findLatestGhostPostByTag } from '$lib/server/ghost';
+import { summarizeResult, writeOpsStatus } from '$lib/server/ops-status';
 
 interface ImportBody {
   dryRun?: boolean;
@@ -78,10 +79,23 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     });
 
     console.log(JSON.stringify({ message: 'bluesky native import processed', requestId, dryRun, sinceBoundary, resolvedSince, ...importResult }));
+    await writeOpsStatus(platform, {
+      flow: 'bluesky',
+      outcome: 'ok',
+      requestId,
+      message: dryRun ? 'Bluesky dry-run import processed' : 'Bluesky import processed',
+      summary: summarizeResult(importResult)
+    });
     return json({ ok: true, requestId, dryRun, sinceBoundary, resolvedSince, ...importResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'bluesky native import failed', requestId, error: message }));
+    await writeOpsStatus(platform, {
+      flow: 'bluesky',
+      outcome: 'error',
+      requestId,
+      message
+    });
     return json({ error: 'bluesky native import failed', detail: message, requestId }, { status: 500 });
   }
 };

@@ -10,6 +10,7 @@ import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts'
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
 import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
+import { summarizeResult } from '../src/lib/server/ops-status.ts';
 import type { SyncConfig } from '../src/lib/server/config.ts';
 
 const baseConfig: SyncConfig = {
@@ -340,4 +341,28 @@ test('finds latest Ghost posts by public and internal tag slugs', async () => {
 
   assert.match(calls[0], /filter=tag%3Aafterword%2Bstatus%3Apublished/);
   assert.match(calls[1], /filter=tag%3Ahash-bluesky%2Bstatus%3Apublished/);
+});
+
+test('summarizes operation results without storing imported content', () => {
+  const summary = summarizeResult({
+    source: 'bluesky',
+    fetchedAt: '2026-06-28T12:00:00.000Z',
+    totalFetched: 3,
+    processed: 3,
+    secret: 'do-not-include',
+    results: [
+      { action: 'created', title: 'One', html: '<p>Large content</p>' },
+      { action: 'exists', title: 'Two' },
+      { action: 'exists', title: 'Three' }
+    ]
+  });
+
+  assert.deepEqual(summary, {
+    source: 'bluesky',
+    fetchedAt: '2026-06-28T12:00:00.000Z',
+    totalFetched: 3,
+    processed: 3,
+    'action.created': 1,
+    'action.exists': 2
+  });
 });

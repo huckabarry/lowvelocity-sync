@@ -204,20 +204,22 @@ export function blueskyPostRkey(uri: string): string {
 
 function normalizeImages(embed: BlueskyEmbedView | undefined): BlueskyUpdateImage[] {
   const images = embed?.images ?? embed?.items ?? [];
-  return images
-    .map((image) => {
-      const url = image.fullsize ?? image.thumb ?? image.thumbnail;
-      if (!url) return null;
-      return {
-        type: 'image' as const,
-        url,
-        thumb: image.thumb ?? image.thumbnail,
-        alt: image.alt ?? '',
-        width: image.aspectRatio?.width,
-        height: image.aspectRatio?.height
-      };
-    })
-    .filter((image): image is BlueskyUpdateImage => Boolean(image));
+  const normalized: BlueskyUpdateImage[] = [];
+
+  for (const image of images) {
+    const url = image.fullsize ?? image.thumb ?? image.thumbnail;
+    if (!url) continue;
+    normalized.push({
+      type: 'image',
+      url,
+      thumb: image.thumb ?? image.thumbnail,
+      alt: image.alt ?? '',
+      width: image.aspectRatio?.width,
+      height: image.aspectRatio?.height
+    });
+  }
+
+  return normalized;
 }
 
 function normalizeExternal(embed: BlueskyEmbedView | undefined): BlueskyUpdateExternal[] {

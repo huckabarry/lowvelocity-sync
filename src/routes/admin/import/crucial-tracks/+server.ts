@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { getSyncConfig } from '$lib/server/config';
 import { timingSafeStringEqual } from '$lib/server/crypto';
 import { ensureListeningPage, importCrucialTracks } from '$lib/server/crucial-tracks';
+import { summarizeResult, writeOpsStatus } from '$lib/server/ops-status';
 
 interface ImportBody {
   dryRun?: boolean;
@@ -47,10 +48,23 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     });
 
     console.log(JSON.stringify({ message: 'crucial tracks import processed', requestId, dryRun, ...importResult }));
+    await writeOpsStatus(platform, {
+      flow: 'crucialTracks',
+      outcome: 'ok',
+      requestId,
+      message: dryRun ? 'Crucial Tracks dry-run import processed' : 'Crucial Tracks import processed',
+      summary: summarizeResult(importResult)
+    });
     return json({ ok: true, requestId, dryRun, page, ...importResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(JSON.stringify({ message: 'crucial tracks import failed', requestId, error: message }));
+    await writeOpsStatus(platform, {
+      flow: 'crucialTracks',
+      outcome: 'error',
+      requestId,
+      message
+    });
     return json({ error: 'crucial tracks import failed', detail: message, requestId }, { status: 500 });
   }
 };
