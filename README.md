@@ -136,6 +136,10 @@ curl -X POST https://sync.lowvelocity.org/admin/import/popfeed \
   -d '{"dryRun":true,"limit":50,"maxPages":20}'
 ```
 
+The `Import Popfeed media to Ghost` GitHub Action calls the Popfeed endpoint in
+batches using `offset` / `nextOffset`, so it can backfill the whole importable
+set while keeping each Worker request small.
+
 To reconnect Foursquare, visit:
 
 ```txt

@@ -76,6 +76,7 @@ interface PopfeedOverrideRecord {
 export interface ImportPopfeedOptions {
   dryRun?: boolean;
   limit?: number;
+  offset?: number;
   maxPages?: number;
   since?: string;
   until?: string;
@@ -446,7 +447,8 @@ export async function readCanonicalPopfeedItems(config: SyncConfig, options: Imp
 export async function importPopfeedMedia(config: SyncConfig, options: ImportPopfeedOptions = {}) {
   const updates = await readCanonicalPopfeedItems(config, options);
   const limit = clamp(options.limit, 50, 1, 500);
-  const selected = updates.items.slice(0, limit);
+  const offset = clamp(options.offset, 0, 0, 100000);
+  const selected = updates.items.slice(offset, offset + limit);
   const results = [];
 
   for (const item of selected) {
@@ -492,6 +494,8 @@ export async function importPopfeedMedia(config: SyncConfig, options: ImportPopf
     totalOverrides: updates.totalOverrides,
     totalImportable: updates.items.length,
     processed: results.length,
+    offset,
+    nextOffset: offset + selected.length < updates.items.length ? offset + selected.length : null,
     limit,
     results
   };

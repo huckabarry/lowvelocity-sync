@@ -52,6 +52,9 @@ included manually, but the conservative default keeps transient states,
 watchlists, and want-to-read records out of Ghost unless that policy changes
 later.
 
+The manual GitHub Action pages through the importer with `offset` /
+`nextOffset`, allowing full backfills without making one large Worker request.
+
 ## Runtime boundaries
 
 - The Worker only handles `sync.lowvelocity.org`.

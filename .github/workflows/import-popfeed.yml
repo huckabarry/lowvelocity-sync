@@ -65,39 +65,51 @@ jobs:
         run: |
           set -euo pipefail
 
-          response_file="$(mktemp)"
-          status="$(
-            jq --null-input \
-              --argjson dryRun "${DRY_RUN}" \
-              --argjson updateExisting "${UPDATE_EXISTING}" \
-              --argjson uploadImages "${UPLOAD_IMAGES}" \
-              --argjson includeCurrentlyReading "${INCLUDE_CURRENTLY_READING}" \
-              --argjson limit "${LIMIT}" \
-              --argjson maxPages "${MAX_PAGES}" \
-              --arg since "${SINCE}" \
-              --arg until "${UNTIL}" \
-              '{
-                dryRun: $dryRun,
-                updateExisting: $updateExisting,
-                uploadImages: $uploadImages,
-                includeCurrentlyReading: $includeCurrentlyReading,
-                limit: $limit,
-                maxPages: $maxPages
-              }
-              + (if $since == "" then {} else {since: $since} end)
-              + (if $until == "" then {} else {until: $until} end)' |
-            curl --silent --show-error \
-              --request POST \
-              --output "${response_file}" \
-              --write-out '%{http_code}' \
-              --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" \
-              --header "Content-Type: application/json" \
-              --data-binary @- \
-              "https://sync.lowvelocity.org/admin/import/popfeed"
-          )"
+          offset=0
 
-          echo "status=${status}"
-          cat "${response_file}" | jq '.'
-          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
-            exit 1
-          fi
+          while true; do
+            response_file="$(mktemp)"
+            status="$(
+              jq --null-input \
+                --argjson dryRun "${DRY_RUN}" \
+                --argjson updateExisting "${UPDATE_EXISTING}" \
+                --argjson uploadImages "${UPLOAD_IMAGES}" \
+                --argjson includeCurrentlyReading "${INCLUDE_CURRENTLY_READING}" \
+                --argjson limit "${LIMIT}" \
+                --argjson offset "${offset}" \
+                --argjson maxPages "${MAX_PAGES}" \
+                --arg since "${SINCE}" \
+                --arg until "${UNTIL}" \
+                '{
+                  dryRun: $dryRun,
+                  updateExisting: $updateExisting,
+                  uploadImages: $uploadImages,
+                  includeCurrentlyReading: $includeCurrentlyReading,
+                  limit: $limit,
+                  offset: $offset,
+                  maxPages: $maxPages
+                }
+                + (if $since == "" then {} else {since: $since} end)
+                + (if $until == "" then {} else {until: $until} end)' |
+              curl --silent --show-error \
+                --request POST \
+                --output "${response_file}" \
+                --write-out '%{http_code}' \
+                --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" \
+                --header "Content-Type: application/json" \
+                --data-binary @- \
+                "https://sync.lowvelocity.org/admin/import/popfeed"
+            )"
+
+            echo "status=${status} offset=${offset}"
+            cat "${response_file}" | jq '.'
+            if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+              exit 1
+            fi
+
+            next_offset="$(jq -r '.nextOffset // empty' "${response_file}")"
+            if [[ -z "${next_offset}" ]]; then
+              break
+            fi
+            offset="${next_offset}"
+          done

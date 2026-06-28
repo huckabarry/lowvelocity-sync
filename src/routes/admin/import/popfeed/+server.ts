@@ -8,6 +8,7 @@ import { summarizeResult, writeOpsStatus } from '$lib/server/ops-status';
 interface ImportBody {
   dryRun?: boolean;
   limit?: number;
+  offset?: number;
   maxPages?: number;
   since?: string;
   until?: string;
@@ -53,6 +54,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     const importResult = await importPopfeedMedia(config, {
       dryRun,
       limit: body.limit,
+      offset: body.offset,
       maxPages: body.maxPages,
       since: body.since,
       until: body.until,
