@@ -88,8 +88,14 @@ add a `scheduled()` handler after build.
 
 This is not as elegant as a first-class source-level scheduled handler, but it
 keeps the current SvelteKit Worker working with Cloudflare cron triggers. The
-patch script now verifies that the generated Worker contains the scheduled
-handler and all three import calls, so future build shape changes fail loudly.
+scheduled handler dispatches internal `Request` objects to the generated
+SvelteKit `fetch()` handler instead of calling `https://sync.lowvelocity.org`
+over public HTTP. That avoids Worker-to-itself edge/network failures while
+preserving the same protected admin import endpoints used by manual workflows.
+
+The patch script verifies that the generated Worker contains the scheduled
+handler, all three import calls, and the internal dispatch path, so future build
+shape changes fail loudly.
 
 If this is refactored later, preserve these behaviors:
 

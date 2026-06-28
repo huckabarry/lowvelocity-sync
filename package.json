@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/patch-scheduled-worker.mjs",
+    "build": "vite build && node scripts/patch-scheduled-worker.mjs && node --check .svelte-kit/cloudflare/_worker.js",
     "preview": "npm run build && wrangler dev",
     "prepare": "svelte-kit sync",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

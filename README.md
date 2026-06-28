@@ -29,7 +29,11 @@ The Worker only handles its configured Cloudflare routes. All other
 
 Cloudflare invokes the Worker every minute via `wrangler.jsonc`. A post-build
 patch in `scripts/patch-scheduled-worker.mjs` adds the scheduled handler to the
-SvelteKit-generated Worker and fails the build if the patch is missing.
+SvelteKit-generated Worker and fails the build if the patch is missing. The
+scheduled handler dispatches to the same protected admin import routes
+internally through the generated Worker `fetch()` handler; it does not call
+`sync.lowvelocity.org` over public HTTP. `npm run build` also syntax-checks the
+patched Worker file before deployment.
 
 - Every minute: import new Bluesky posts from `bryan.eurosky.social` into Ghost
   as `updates`, `#bluesky`, and `#atproto`.

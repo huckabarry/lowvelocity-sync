@@ -7,63 +7,86 @@ function assertScheduledPatch(source) {
   const required = [
     marker,
     'async scheduled(controller, env2, ctx)',
-    'runScheduledBlueskyImport(env2, controller)',
-    'runScheduledCheckinsImport(env2, controller)',
-    'runScheduledCrucialTracksImport(env2, controller)'
+    'worker_default.fetch(request, env2, ctx)',
+    'runScheduledBlueskyImport(env2, ctx, controller)',
+    'runScheduledCheckinsImport(env2, ctx, controller)',
+    'runScheduledCrucialTracksImport(env2, ctx, controller)'
   ];
 
   const missing = required.filter((value) => !source.includes(value));
   if (missing.length) {
     throw new Error(`Scheduled importer patch is incomplete. Missing: ${missing.join(', ')}`);
   }
+
+  if (source.includes('fetch(`${baseUrl}/admin/import/')) {
+    throw new Error('Scheduled importer patch still uses public self-HTTP instead of internal Worker dispatch');
+  }
 }
 
 const scheduledHelper = `
 // ${marker}
-async function runScheduledBlueskyImport(env2, controller) {
+async function runScheduledImport(env2, ctx, controller, job) {
   const token = String(env2.GHOST_STAFF_ACCESS_TOKEN || '').trim();
   if (!token) {
-    throw new Error('Missing GHOST_STAFF_ACCESS_TOKEN for scheduled Bluesky import');
+    console.log(JSON.stringify({
+      message: \`scheduled \${job.name} import skipped\`,
+      reason: 'missing Ghost staff token',
+      cron: controller?.cron || ''
+    }));
+    return;
   }
 
-  const baseUrl = String(env2.SYNC_BASE_URL || 'https://sync.lowvelocity.org').replace(/\\/$/, '');
-  const response = await fetch(\`\${baseUrl}/admin/import/bluesky\`, {
+  const request = new Request(\`https://sync.lowvelocity.org\${job.path}\`, {
     method: 'POST',
     headers: {
       Authorization: \`Bearer \${token}\`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      dryRun: false,
-      updateExisting: false,
-      uploadImages: true,
-      limit: 10,
-      maxPages: 2,
-      sinceTag: '#bluesky'
-    })
+    body: JSON.stringify(job.body)
   });
 
+  const response = await worker_default.fetch(request, env2, ctx);
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(\`Scheduled Bluesky import failed with \${response.status}: \${text}\`);
+    console.warn(JSON.stringify({
+      message: \`scheduled \${job.name} import failed\`,
+      cron: controller?.cron || '',
+      status: response.status,
+      result: text
+    }));
+    return;
   }
 
   console.log(JSON.stringify({
-    message: 'scheduled Bluesky import processed',
+    message: \`scheduled \${job.name} import processed\`,
     cron: controller?.cron || '',
     status: response.status,
     result: text ? JSON.parse(text) : null
   }));
 }
 
-async function runScheduledCheckinsImport(env2, controller) {
-  const token = String(env2.GHOST_STAFF_ACCESS_TOKEN || '').trim();
+async function runScheduledBlueskyImport(env2, ctx, controller) {
+  await runScheduledImport(env2, ctx, controller, {
+    name: 'Bluesky',
+    path: '/admin/import/bluesky',
+    body: {
+      dryRun: false,
+      updateExisting: false,
+      uploadImages: true,
+      limit: 10,
+      maxPages: 2,
+      sinceTag: '#bluesky'
+    }
+  });
+}
+
+async function runScheduledCheckinsImport(env2, ctx, controller) {
   const foursquareToken = String(env2.FOURSQUARE_ACCESS_TOKEN || env2.SWARM_ACCESS_TOKEN || '').trim();
   const hasCheckinsTokenStore = Boolean(env2.CHECKINS_KV);
-  if (!token || (!foursquareToken && !hasCheckinsTokenStore)) {
+  if (!foursquareToken && !hasCheckinsTokenStore) {
     console.log(JSON.stringify({
       message: 'scheduled check-ins import skipped',
-      reason: !token ? 'missing Ghost staff token' : 'missing Foursquare access token or CHECKINS_KV binding',
+      reason: 'missing Foursquare access token or CHECKINS_KV binding',
       cron: controller?.cron || ''
     }));
     return;
@@ -73,91 +96,37 @@ async function runScheduledCheckinsImport(env2, controller) {
   const minute = new Date(scheduledTime).getUTCMinutes();
   if (minute % 15 !== 0) return;
 
-  const baseUrl = String(env2.SYNC_BASE_URL || 'https://sync.lowvelocity.org').replace(/\\/$/, '');
-  const response = await fetch(\`\${baseUrl}/admin/import/checkins\`, {
-    method: 'POST',
-    headers: {
-      Authorization: \`Bearer \${token}\`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  await runScheduledImport(env2, ctx, controller, {
+    name: 'check-ins',
+    path: '/admin/import/checkins',
+    body: {
       dryRun: false,
       updateExisting: false,
       uploadImages: true,
       limit: 20,
       maxPages: 2,
       sinceTag: 'check-ins'
-    })
+    }
   });
-
-  const text = await response.text();
-  if (!response.ok) {
-    console.warn(JSON.stringify({
-      message: 'scheduled check-ins import failed',
-      cron: controller?.cron || '',
-      status: response.status,
-      result: text
-    }));
-    return;
-  }
-
-  console.log(JSON.stringify({
-    message: 'scheduled check-ins import processed',
-    cron: controller?.cron || '',
-    status: response.status,
-    result: text ? JSON.parse(text) : null
-  }));
 }
 
-async function runScheduledCrucialTracksImport(env2, controller) {
-  const token = String(env2.GHOST_STAFF_ACCESS_TOKEN || '').trim();
-  if (!token) {
-    console.log(JSON.stringify({
-      message: 'scheduled Crucial Tracks import skipped',
-      reason: 'missing Ghost staff token',
-      cron: controller?.cron || ''
-    }));
-    return;
-  }
-
+async function runScheduledCrucialTracksImport(env2, ctx, controller) {
   const scheduledTime = Number(controller?.scheduledTime || Date.now());
   const minute = new Date(scheduledTime).getUTCMinutes();
   if (minute % 5 !== 0) return;
 
-  const baseUrl = String(env2.SYNC_BASE_URL || 'https://sync.lowvelocity.org').replace(/\\/$/, '');
-  const response = await fetch(\`\${baseUrl}/admin/import/crucial-tracks\`, {
-    method: 'POST',
-    headers: {
-      Authorization: \`Bearer \${token}\`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  await runScheduledImport(env2, ctx, controller, {
+    name: 'Crucial Tracks',
+    path: '/admin/import/crucial-tracks',
+    body: {
       dryRun: false,
       updateExisting: false,
       ensurePage: false,
       limit: 3,
       offset: 0,
       order: 'desc'
-    })
+    }
   });
-
-  const text = await response.text();
-  if (!response.ok) {
-    console.warn(JSON.stringify({
-      message: 'scheduled Crucial Tracks import failed',
-      cron: controller?.cron || '',
-      status: response.status,
-      result: text
-    }));
-    return;
-  }
-
-  console.log(JSON.stringify({
-    message: 'scheduled Crucial Tracks import processed',
-    cron: controller?.cron || '',
-    status: response.status,
-    result: text ? JSON.parse(text) : null
-  }));
 }
 `;
 
@@ -176,10 +145,9 @@ if (!source.includes(marker)) {
     target +
     `
   async scheduled(controller, env2, ctx) {
-    void ctx;
-    await runScheduledBlueskyImport(env2, controller);
-    await runScheduledCheckinsImport(env2, controller);
-    await runScheduledCrucialTracksImport(env2, controller);
+    await runScheduledBlueskyImport(env2, ctx, controller);
+    await runScheduledCheckinsImport(env2, ctx, controller);
+    await runScheduledCrucialTracksImport(env2, ctx, controller);
   },
 ` +
     source.slice(index + target.length);
