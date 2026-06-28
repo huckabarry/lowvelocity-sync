@@ -47,17 +47,52 @@ function tokenResponse(accessToken: string): Response {
       white-space: pre-wrap;
       word-break: break-all;
     }
+    .status {
+      margin: 1rem 0;
+      padding: 1rem;
+      border: 1px solid #444;
+      border-radius: 8px;
+      background: #181818;
+    }
+    .status.ok {
+      border-color: #2abc89;
+    }
+    .status.error {
+      border-color: #d45478;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Foursquare connected</h1>
-    <p>This is your Foursquare access token. Add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>, then the check-in importer can read your Swarm/Foursquare check-ins.</p>
+    <p>This is your Foursquare access token. I’m testing it against your check-in history now. If it verifies, add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>.</p>
+    <div id="verify-status" class="status">Testing token…</div>
     <pre>${escapedToken}</pre>
     <p>With Wrangler:</p>
     <pre>npx wrangler secret put FOURSQUARE_ACCESS_TOKEN --name lowvelocity-sync</pre>
     <p>Keep this token private. You can close this page after saving it.</p>
   </main>
+  <script>
+    (async function () {
+      var box = document.getElementById('verify-status');
+      try {
+        var response = await fetch('/admin/checkins/verify', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({accessToken: ${JSON.stringify(accessToken)}})
+        });
+        var result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result.detail || result.error || 'Token verification failed');
+        }
+        box.className = 'status ok';
+        box.textContent = 'Verified. This token can read ' + result.count + ' Foursquare/Swarm check-ins' + (result.latest ? '. Latest: ' + result.latest.title + '.' : '.');
+      } catch (error) {
+        box.className = 'status error';
+        box.textContent = 'Token test failed: ' + (error && error.message ? error.message : 'Unknown error');
+      }
+    })();
+  </script>
 </body>
 </html>`, {
     headers: {
@@ -104,6 +139,19 @@ function callbackHelpResponse(): Response {
     .hidden {
       display: none;
     }
+    .status {
+      margin: 1rem 0;
+      padding: 1rem;
+      border: 1px solid #444;
+      border-radius: 8px;
+      background: #181818;
+    }
+    .status.ok {
+      border-color: #2abc89;
+    }
+    .status.error {
+      border-color: #d45478;
+    }
   </style>
 </head>
 <body>
@@ -111,6 +159,7 @@ function callbackHelpResponse(): Response {
     <h1>Foursquare callback</h1>
     <div id="token-result" class="hidden">
       <p>This is your Foursquare access token. Add it to Cloudflare as <code>FOURSQUARE_ACCESS_TOKEN</code>.</p>
+      <div id="verify-status" class="status">Testing token…</div>
       <pre id="token"></pre>
       <p>With Wrangler:</p>
       <pre>npx wrangler secret put FOURSQUARE_ACCESS_TOKEN --name lowvelocity-sync</pre>
@@ -129,6 +178,23 @@ function callbackHelpResponse(): Response {
       document.getElementById('token-result').classList.remove('hidden');
       document.getElementById('no-token').classList.add('hidden');
       history.replaceState(null, document.title, window.location.pathname);
+      var box = document.getElementById('verify-status');
+      fetch('/admin/checkins/verify', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({accessToken: token})
+      }).then(function (response) {
+        return response.json().then(function (result) {
+          if (!response.ok || !result.ok) {
+            throw new Error(result.detail || result.error || 'Token verification failed');
+          }
+          box.className = 'status ok';
+          box.textContent = 'Verified. This token can read ' + result.count + ' Foursquare/Swarm check-ins' + (result.latest ? '. Latest: ' + result.latest.title + '.' : '.');
+        });
+      }).catch(function (error) {
+        box.className = 'status error';
+        box.textContent = 'Token test failed: ' + (error && error.message ? error.message : 'Unknown error');
+      });
     })();
   </script>
 </body>

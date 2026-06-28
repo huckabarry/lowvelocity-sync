@@ -1,6 +1,6 @@
 import type { SyncConfig } from './config.ts';
 import { createGhostHtmlEntry, findGhostPostBySlug, updateGhostHtmlEntry, uploadGhostImageFromUrl } from './ghost.ts';
-import { readJsonResponse } from './http.ts';
+import { readJsonResponse, UpstreamError } from './http.ts';
 
 const FOURSQUARE_API_BASE = 'https://api.foursquare.com/v2';
 const FOURSQUARE_API_VERSION = '20260330';
@@ -60,6 +60,11 @@ export interface ImportSwarmCheckinsOptions {
 }
 
 interface FoursquareCheckinsResponse {
+  meta?: {
+    code?: number;
+    errorType?: string;
+    errorDetail?: string;
+  };
   response?: {
     checkins?: {
       count?: number;
@@ -211,7 +216,46 @@ async function fetchFoursquareJson<T>(path: string, accessToken: string, params 
     }
   });
 
-  return readJsonResponse<T>(response, 'Foursquare API');
+  const payload = await readJsonResponse<T>(response, 'Foursquare API');
+  const meta = (payload as { meta?: { code?: number; errorType?: string; errorDetail?: string } }).meta;
+  if (meta?.code && meta.code >= 400) {
+    throw new UpstreamError(
+      `Foursquare API: ${meta.errorDetail || meta.errorType || `HTTP ${meta.code}`}`,
+      meta.code,
+      meta.errorType
+    );
+  }
+  return payload;
+}
+
+export async function verifyFoursquareAccessToken(accessToken: string) {
+  const normalized = normalizeString(accessToken);
+  if (!normalized) throw new Error('Foursquare access token is required');
+
+  const payload = await fetchFoursquareJson<FoursquareCheckinsResponse>(
+    '/users/self/checkins',
+    normalized,
+    new URLSearchParams({ limit: '1', offset: '0' })
+  );
+  const items = Array.isArray(payload.response?.checkins?.items) ? payload.response?.checkins?.items || [] : [];
+  const latest = items[0] ? ghostInputForSwarmCheckin(items[0]) : null;
+
+  return {
+    ok: true,
+    count: payload.response?.checkins?.count ?? items.length,
+    latest: latest ? {
+      title: latest.title,
+      slug: latest.slug,
+      visitedAt: latest.published_at
+    } : null
+  };
+}
+
+export async function verifyConfiguredFoursquareAccess(config: SyncConfig) {
+  if (!config.foursquareAccessToken) {
+    throw new Error('Set FOURSQUARE_ACCESS_TOKEN or SWARM_ACCESS_TOKEN before verifying check-ins');
+  }
+  return verifyFoursquareAccessToken(config.foursquareAccessToken);
 }
 
 async function readSwarmCheckinsWindow(config: SyncConfig, options: ImportSwarmCheckinsOptions) {
