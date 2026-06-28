@@ -17,6 +17,14 @@ on:
         description: Number of tracks per Worker request
         required: true
         default: "10"
+      order:
+        description: Import order: asc for backfill, desc for latest-first checks
+        required: true
+        type: choice
+        default: asc
+        options:
+          - asc
+          - desc
 
 permissions:
   contents: read
@@ -34,6 +42,7 @@ jobs:
           DRY_RUN_INPUT: ${{ inputs.dry_run }}
           UPDATE_EXISTING_INPUT: ${{ inputs.update_existing }}
           BATCH_SIZE_INPUT: ${{ inputs.batch_size }}
+          ORDER_INPUT: ${{ inputs.order }}
         shell: bash
         run: |
           set -euo pipefail
@@ -41,6 +50,7 @@ jobs:
           dry_run="${DRY_RUN_INPUT:-false}"
           update_existing="${UPDATE_EXISTING_INPUT:-false}"
           batch_size="${BATCH_SIZE_INPUT:-10}"
+          order="${ORDER_INPUT:-asc}"
           offset=0
 
           while true; do
@@ -51,7 +61,8 @@ jobs:
                 --argjson updateExisting "${update_existing}" \
                 --argjson limit "${batch_size}" \
                 --argjson offset "${offset}" \
-                '{dryRun: $dryRun, updateExisting: $updateExisting, limit: $limit, offset: $offset}' |
+                --arg order "${order}" \
+                '{dryRun: $dryRun, updateExisting: $updateExisting, limit: $limit, offset: $offset, order: $order}' |
               curl --silent --show-error \
                 --request POST \
                 --output "${response_file}" \

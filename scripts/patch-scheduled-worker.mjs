@@ -120,7 +120,8 @@ async function runScheduledCrucialTracksImport(env2, controller) {
       updateExisting: false,
       ensurePage: false,
       limit: 3,
-      offset: 0
+      offset: 0,
+      order: 'desc'
     })
   });
 

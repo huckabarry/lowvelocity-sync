@@ -8,6 +8,7 @@ interface ImportBody {
   dryRun?: boolean;
   limit?: number;
   offset?: number;
+  order?: 'asc' | 'desc';
   updateExisting?: boolean;
   ensurePage?: boolean;
 }
@@ -41,6 +42,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       dryRun,
       limit: body.limit,
       offset: body.offset,
+      order: body.order,
       updateExisting: body.updateExisting
     });
 

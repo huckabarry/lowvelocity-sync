@@ -26,6 +26,7 @@ export interface ImportCrucialTracksOptions {
   dryRun?: boolean;
   limit?: number;
   offset?: number;
+  order?: 'asc' | 'desc';
   updateExisting?: boolean;
 }
 
@@ -409,10 +410,12 @@ export async function ensureListeningPage(config: SyncConfig, dryRun = false) {
 }
 
 export async function importCrucialTracks(config: SyncConfig, options: ImportCrucialTracksOptions = {}) {
+  const order = options.order === 'desc' ? 'desc' : 'asc';
   const entries = await getMergedCrucialTrackEntries();
+  const orderedEntries = order === 'desc' ? [...entries].reverse() : entries;
   const offset = Math.max(0, options.offset ?? 0);
   const limit = Math.max(1, Math.min(20, options.limit ?? 10));
-  const selected = await mapWithConcurrency(entries.slice(offset, offset + limit), 4, enrichFromApple);
+  const selected = await mapWithConcurrency(orderedEntries.slice(offset, offset + limit), 4, enrichFromApple);
   const results = [];
 
   for (const entry of selected) {
@@ -448,8 +451,9 @@ export async function importCrucialTracks(config: SyncConfig, options: ImportCru
     total: entries.length,
     offset,
     limit,
+    order,
     processed: selected.length,
-    nextOffset: offset + selected.length < entries.length ? offset + selected.length : null,
+    nextOffset: offset + selected.length < orderedEntries.length ? offset + selected.length : null,
     results
   };
 }
