@@ -6,7 +6,7 @@ import { verifyGhostSignature } from '../src/lib/server/crypto.ts';
 import { buildDocumentLinkInjection, findLatestGhostPostByTag } from '../src/lib/server/ghost.ts';
 import { ghostPostToDocument, htmlToPlainText } from '../src/lib/server/transform.ts';
 import { normalizeBlueskyFeedItem } from '../src/lib/server/bluesky.ts';
-import { ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
+import { blueskyUpdateReferencesSourceSite, ghostInputForBlueskyUpdate } from '../src/lib/server/bluesky-native.ts';
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
 import { ghostInputForPopfeedItem, type PopfeedImportItem } from '../src/lib/server/popfeed-native.ts';
@@ -221,6 +221,45 @@ test('builds idempotent native Ghost input for Bluesky posts', () => {
   assert.match(input.html, /https:\/\/cdn\.example\/quoted-article\.jpg/);
   assert.doesNotMatch(input.html, /View on Bluesky/);
   assert.doesNotMatch(input.html, /<code>at:\/\//);
+});
+
+test('detects Bluesky posts that link back to the source site', () => {
+  const baseUpdate = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/3mpbzshd77i2o',
+    cid: 'bafy',
+    url: 'https://bsky.app/profile/bryan.eurosky.social/post/3mpbzshd77i2o',
+    text: 'A native Bluesky thought.',
+    createdAt: '2026-06-27T17:41:00.000Z',
+    author: { did: 'did:plc:test', handle: 'bryan.eurosky.social' },
+    counts: { likes: 0, replies: 0, reposts: 0, quotes: 0 },
+    embeds: []
+  };
+
+  assert.equal(blueskyUpdateReferencesSourceSite(baseUpdate, baseConfig), false);
+  assert.equal(blueskyUpdateReferencesSourceSite({
+    ...baseUpdate,
+    text: 'New post: https://lowvelocity.org/pittsburgh/'
+  }, baseConfig), true);
+  assert.equal(blueskyUpdateReferencesSourceSite({
+    ...baseUpdate,
+    text: 'New post at lowvelocity.org/pittsburgh/'
+  }, baseConfig), true);
+  assert.equal(blueskyUpdateReferencesSourceSite({
+    ...baseUpdate,
+    embeds: [{
+      type: 'external',
+      uri: 'https://www.lowvelocity.org/listening/glory-2018-remaster-liz-phair/',
+      title: 'Glory (2018 Remaster) — Liz Phair'
+    }]
+  }, baseConfig), true);
+  assert.equal(blueskyUpdateReferencesSourceSite({
+    ...baseUpdate,
+    embeds: [{
+      type: 'quote',
+      uri: 'at://did:plc:quote/app.bsky.feed.post/3quote',
+      text: 'Worth reading: https://lowvelocity.org/urbanism/'
+    }]
+  }, baseConfig), true);
 });
 
 test('builds idempotent native Ghost input for Swarm check-ins', () => {

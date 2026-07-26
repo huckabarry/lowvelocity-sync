@@ -51,6 +51,62 @@ function stripText(value: string): string {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function normalizedSourceHosts(config: SyncConfig): string[] {
+  const hosts = new Set(['lowvelocity.org']);
+  try {
+    const host = new URL(config.ghostUrl).hostname.toLowerCase().replace(/^www\./, '');
+    if (host) hosts.add(host);
+  } catch {
+    // Ignore malformed configured URLs here; other config validation will catch hard failures.
+  }
+  return [...hosts];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hostMatchesSource(hostname: string, sourceHost: string): boolean {
+  const host = hostname.toLowerCase().replace(/^www\./, '');
+  return host === sourceHost || host.endsWith(`.${sourceHost}`);
+}
+
+function urlReferencesSourceSite(value: string | undefined, sourceHosts: string[]): boolean {
+  if (!value) return false;
+  const cleaned = value.trim().replace(/[),.;:!?]+$/, '');
+  if (!cleaned) return false;
+
+  try {
+    const url = new URL(cleaned);
+    return sourceHosts.some((host) => hostMatchesSource(url.hostname, host));
+  } catch {
+    return false;
+  }
+}
+
+function textReferencesSourceSite(value: string, sourceHosts: string[]): boolean {
+  const text = String(value || '');
+  return sourceHosts.some((host) => {
+    const pattern = new RegExp(`(^|[^a-z0-9.-])(?:https?:\\/\\/)?(?:[a-z0-9-]+\\.)*${escapeRegExp(host)}(?=$|[/:?#\\s)\\].,;!'"])`, 'i');
+    return pattern.test(text);
+  });
+}
+
+function embedReferencesSourceSite(embed: BlueskyUpdateEmbed, sourceHosts: string[]): boolean {
+  if (embed.type === 'external') return urlReferencesSourceSite(embed.uri, sourceHosts);
+  if (embed.type === 'quote') {
+    return textReferencesSourceSite(embed.text || '', sourceHosts)
+      || (embed.embeds || []).some((nested) => embedReferencesSourceSite(nested, sourceHosts));
+  }
+  return false;
+}
+
+export function blueskyUpdateReferencesSourceSite(update: BlueskyUpdate, config: SyncConfig): boolean {
+  const sourceHosts = normalizedSourceHosts(config);
+  return textReferencesSourceSite(update.text, sourceHosts)
+    || update.embeds.some((embed) => embedReferencesSourceSite(embed, sourceHosts));
+}
+
 function slugForUpdate(update: BlueskyUpdate): string {
   return `bsky-${blueskyPostRkey(update.uri)}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 180);
 }
@@ -274,6 +330,18 @@ export async function importBlueskyPosts(config: SyncConfig, options: ImportBlue
   const results = [];
 
   for (const update of updates.items) {
+    if (blueskyUpdateReferencesSourceSite(update, config)) {
+      results.push({
+        action: 'skipped-source-site-link',
+        slug: slugForUpdate(update),
+        title: titleForUpdate(update),
+        createdAt: update.createdAt,
+        url: update.url,
+        uri: update.uri
+      });
+      continue;
+    }
+
     const baseInput = ghostInputForBlueskyUpdate(update);
     const existing = await findGhostPostBySlug(config, baseInput.slug);
 
