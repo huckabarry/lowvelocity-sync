@@ -389,8 +389,8 @@ function musicPostHtml(entry: CrucialTrackEntry): string {
   ].filter(Boolean).join('\n');
 }
 
-function customExcerpt(entry: CrucialTrackEntry): string {
-  return [entry.note, `${entry.title}${entry.artist ? ` by ${entry.artist}` : ''}`].filter(Boolean).join(' — ').slice(0, 300);
+export function crucialTrackCustomExcerpt(entry: CrucialTrackEntry): string {
+  return (entry.note || '').slice(0, 300);
 }
 
 export async function ensureListeningPage(config: SyncConfig, dryRun = false) {
@@ -435,7 +435,7 @@ export async function importCrucialTracks(config: SyncConfig, options: ImportCru
       slug,
       title: `${entry.title}${entry.artist ? ` — ${entry.artist}` : ''}`,
       html: musicPostHtml(entry),
-      custom_excerpt: customExcerpt(entry),
+      custom_excerpt: crucialTrackCustomExcerpt(entry),
       feature_image: ghostImageUrl,
       published_at: new Date(entry.publishedAt).toISOString(),
       tags: [{ name: 'listening' }, { name: '#crucialtracks' }],

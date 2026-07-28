@@ -10,6 +10,7 @@ import { blueskyUpdateReferencesSourceSite, ghostInputForBlueskyUpdate } from '.
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
 import { ghostInputForPopfeedItem, type PopfeedImportItem } from '../src/lib/server/popfeed-native.ts';
+import { crucialTrackCustomExcerpt, type CrucialTrackEntry } from '../src/lib/server/crucial-tracks.ts';
 import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
 import { summarizeResult } from '../src/lib/server/ops-status.ts';
 import type { SyncConfig } from '../src/lib/server/config.ts';
@@ -32,6 +33,27 @@ const baseConfig: SyncConfig = {
   publicationUri: 'at://did:plc:test/site.standard.publication/self',
   standardSiteSyncEnabled: true
 };
+
+test('uses only the listening note in Crucial Tracks excerpts', () => {
+  const entry: CrucialTrackEntry = {
+    sourceUrl: 'https://www.crucialtracks.org/listening/programmed-behind',
+    title: 'Programmed Behind',
+    artist: 'Cave In',
+    albumTitle: 'Beyond Hypothermia',
+    albumReleaseYear: '1998',
+    note: 'Simpler times',
+    noteHtml: '<p>Simpler times</p>',
+    artworkUrl: null,
+    previewUrl: null,
+    appleMusicUrl: null,
+    songlinkUrl: null,
+    playlistUrl: null,
+    publishedAt: '2026-07-27T00:00:00.000Z'
+  };
+
+  assert.equal(crucialTrackCustomExcerpt(entry), 'Simpler times');
+  assert.equal(crucialTrackCustomExcerpt({ ...entry, note: '' }), '');
+});
 
 test('transforms a Ghost post into a Standard.site document', () => {
   const record = ghostPostToDocument({
