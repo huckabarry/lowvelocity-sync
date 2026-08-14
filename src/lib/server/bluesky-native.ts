@@ -122,11 +122,6 @@ function imageFilename(update: BlueskyUpdate, index: number): string {
   return `${slugForUpdate(update)}-${index + 1}.jpg`;
 }
 
-function externalImageFilename(update: BlueskyUpdate, index: number, url: string): string {
-  const extension = /\.gif(?:[?#]|$)/i.test(url) ? 'gif' : 'jpg';
-  return `${slugForUpdate(update)}-external-${index + 1}.${extension}`;
-}
-
 function videoPosterFilename(update: BlueskyUpdate, index: number): string {
   return `${slugForUpdate(update)}-video-${index + 1}.jpg`;
 }
@@ -245,7 +240,6 @@ async function withUploadedImages(
   if (!uploadImages) return update.embeds;
   const embeds: BlueskyUpdateEmbed[] = [];
   let imageIndex = 0;
-  let externalIndex = 0;
   let videoIndex = 0;
 
   async function uploadEmbed(embed: BlueskyUpdateEmbed): Promise<BlueskyUpdateEmbed> {
