@@ -122,11 +122,6 @@ function imageFilename(update: BlueskyUpdate, index: number): string {
   return `${slugForUpdate(update)}-${index + 1}.jpg`;
 }
 
-function externalImageFilename(update: BlueskyUpdate, index: number, url: string): string {
-  const extension = /\.gif(?:[?#]|$)/i.test(url) ? 'gif' : 'jpg';
-  return `${slugForUpdate(update)}-external-${index + 1}.${extension}`;
-}
-
 function videoPosterFilename(update: BlueskyUpdate, index: number): string {
   return `${slugForUpdate(update)}-video-${index + 1}.jpg`;
 }
@@ -245,7 +240,6 @@ async function withUploadedImages(
   if (!uploadImages) return update.embeds;
   const embeds: BlueskyUpdateEmbed[] = [];
   let imageIndex = 0;
-  let externalIndex = 0;
   let videoIndex = 0;
 
   async function uploadEmbed(embed: BlueskyUpdateEmbed): Promise<BlueskyUpdateEmbed> {
@@ -256,13 +250,9 @@ async function withUploadedImages(
     }
 
     if (embed.type === 'external') {
-      const externalImageUrl = isAnimatedGifExternal(embed) ? embed.uri : embed.thumb;
-      if (!externalImageUrl) {
-        return embed;
-      }
-      const uploaded = await tryUploadGhostImageFromUrl(config, externalImageUrl, externalImageFilename(update, externalIndex, externalImageUrl));
-      externalIndex += 1;
-      return { ...embed, thumb: uploaded ?? embed.thumb ?? (isAnimatedGifExternal(embed) ? embed.uri : undefined) };
+      // Keep third-party preview media remote. It remains visually associated
+      // with the linked resource instead of becoming a locally hosted Ghost image.
+      return embed;
     }
 
     if (embed.type === 'video') {

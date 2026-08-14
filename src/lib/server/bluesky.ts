@@ -273,6 +273,14 @@ function normalizeEmbeds(embed: BlueskyEmbedView | undefined): BlueskyUpdateEmbe
   ];
 }
 
+function hasSelfQuote(embeds: BlueskyUpdateEmbed[], expectedDid: string): boolean {
+  return embeds.some((embed) => {
+    if (embed.type !== 'quote') return false;
+    if (embed.author?.did === expectedDid) return true;
+    return hasSelfQuote(embed.embeds ?? [], expectedDid);
+  });
+}
+
 export function normalizeBlueskyFeedItem(item: BlueskyFeedItem, expectedDid: string): BlueskyUpdate | null {
   const post = item.post;
   const author = post?.author;
@@ -280,6 +288,8 @@ export function normalizeBlueskyFeedItem(item: BlueskyFeedItem, expectedDid: str
   if (!post?.uri || !record?.createdAt || !author?.did || !author.handle) return null;
   if (author.did !== expectedDid) return null;
   if (item.reason || record.reply) return null;
+  const embeds = normalizeEmbeds(post.embed);
+  if (hasSelfQuote(embeds, expectedDid)) return null;
   return {
     uri: post.uri,
     cid: post.cid,
@@ -298,7 +308,7 @@ export function normalizeBlueskyFeedItem(item: BlueskyFeedItem, expectedDid: str
       reposts: post.repostCount ?? 0,
       quotes: post.quoteCount ?? 0
     },
-    embeds: normalizeEmbeds(post.embed)
+    embeds
   };
 }
 
