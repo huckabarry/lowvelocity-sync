@@ -256,13 +256,9 @@ async function withUploadedImages(
     }
 
     if (embed.type === 'external') {
-      const externalImageUrl = isAnimatedGifExternal(embed) ? embed.uri : embed.thumb;
-      if (!externalImageUrl) {
-        return embed;
-      }
-      const uploaded = await tryUploadGhostImageFromUrl(config, externalImageUrl, externalImageFilename(update, externalIndex, externalImageUrl));
-      externalIndex += 1;
-      return { ...embed, thumb: uploaded ?? embed.thumb ?? (isAnimatedGifExternal(embed) ? embed.uri : undefined) };
+      // Keep third-party preview media remote. It remains visually associated
+      // with the linked resource instead of becoming a locally hosted Ghost image.
+      return embed;
     }
 
     if (embed.type === 'video') {
