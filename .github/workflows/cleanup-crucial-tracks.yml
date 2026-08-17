@@ -1,0 +1,27 @@
+name: Cleanup duplicate Crucial Tracks posts
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview only; do not delete Ghost posts
+        required: true
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Find and remove duplicate listening posts
+        env:
+          GHOST_STAFF_ACCESS_TOKEN: ${{ secrets.GHOST_STAFF_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(jq --null-input --argjson dryRun "${DRY_RUN}" '{dryRun: $dryRun}' | curl --silent --show-error --request POST --output "${response_file}" --write-out '%{http_code}' --header "Authorization: Bearer ${GHOST_STAFF_ACCESS_TOKEN}" --header "Content-Type: application/json" --data-binary @- "https://sync.lowvelocity.org/admin/cleanup/crucial-tracks")"
+          jq '.' "${response_file}"
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then exit 1; fi

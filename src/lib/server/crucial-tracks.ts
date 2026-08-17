@@ -1,7 +1,7 @@
-import { createGhostHtmlEntry, findGhostPostBySlug, updateGhostHtmlEntry, uploadGhostImageFromUrl } from './ghost.ts';
+import { createGhostHtmlEntry, findGhostPostBySlug, readGhostPostsByTag, updateGhostHtmlEntry, uploadGhostImageFromUrl } from './ghost.ts';
 import type { SyncConfig } from './config.ts';
 
-const FEED_URL = 'https://www.crucialtracks.org/profile/bryan/feed.json';
+const FEED_URL = 'https://www.crucialtracks.org/profile/bryan/feed.json?per_page=100';
 const ARCHIVE_TREE_URL = 'https://api.github.com/repos/huckabarry/afterword-sveltekit-pds/git/trees/main?recursive=1';
 const ARCHIVE_RAW_BASE = 'https://raw.githubusercontent.com/huckabarry/afterword-sveltekit-pds/main/';
 const PLAYLIST_URL = 'https://music.apple.com/us/playlist/crucial-tracks/pl.u-RRbV745t9lJmK';
@@ -73,13 +73,26 @@ function splitTitleAndArtist(value: string): { title: string; artist: string } {
   return match ? { title: match[1].trim(), artist: match[2].trim() } : { title: normalized || 'Untitled', artist: '' };
 }
 
-function entrySlug(entry: CrucialTrackEntry): string {
+export function crucialTrackSlug(entry: CrucialTrackEntry): string {
   const date = entry.sourceUrl.match(/\/(\d{8})$/)?.[1] ?? entry.publishedAt.slice(0, 10).replace(/-/g, '');
   return `listening-${date}-${slugify(entry.title)}-${slugify(entry.artist)}`.slice(0, 180);
 }
 
+export function crucialTrackIdentity(title: string, artist: string, publishedAt: string): string {
+  return `${slugify(title)}\u0000${slugify(artist)}\u0000${new Date(publishedAt).toISOString()}`;
+}
+
+function entryIdentity(entry: CrucialTrackEntry): string {
+  return crucialTrackIdentity(entry.title, entry.artist, entry.publishedAt);
+}
+
+function postIdentity(title: string, publishedAt: string): string {
+  const separator = title.lastIndexOf(' — ');
+  return crucialTrackIdentity(separator === -1 ? title : title.slice(0, separator), separator === -1 ? '' : title.slice(separator + 3), publishedAt);
+}
+
 function imageFilename(entry: CrucialTrackEntry): string {
-  return `${entrySlug(entry)}.jpg`;
+  return `${crucialTrackSlug(entry)}.jpg`;
 }
 
 function yearFromDate(value: string | null | undefined): string | null {
@@ -334,10 +347,10 @@ async function enrichFromApple(entry: CrucialTrackEntry): Promise<CrucialTrackEn
 
 async function getMergedCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
   const [live, archive] = await Promise.all([fetchLiveFeed(), fetchArchiveEntries()]);
-  const bySourceUrl = new Map<string, CrucialTrackEntry>();
-  for (const entry of archive) bySourceUrl.set(entry.sourceUrl, entry);
-  for (const entry of live) bySourceUrl.set(entry.sourceUrl, { ...(bySourceUrl.get(entry.sourceUrl) ?? {}), ...entry });
-  return [...bySourceUrl.values()].sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+  const byIdentity = new Map<string, CrucialTrackEntry>();
+  for (const entry of archive) byIdentity.set(entryIdentity(entry), entry);
+  for (const entry of live) byIdentity.set(entryIdentity(entry), { ...(byIdentity.get(entryIdentity(entry)) ?? {}), ...entry });
+  return [...byIdentity.values()].sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
 }
 
 async function mapWithConcurrency<T, R>(
@@ -363,6 +376,10 @@ async function mapWithConcurrency<T, R>(
 export async function getCrucialTrackEntries(): Promise<CrucialTrackEntry[]> {
   const entries = await getMergedCrucialTrackEntries();
   return mapWithConcurrency(entries, 4, enrichFromApple);
+}
+
+export function getCrucialTrackIdentityEntries(): Promise<CrucialTrackEntry[]> {
+  return getMergedCrucialTrackEntries();
 }
 
 function musicPostHtml(entry: CrucialTrackEntry): string {
@@ -416,11 +433,14 @@ export async function importCrucialTracks(config: SyncConfig, options: ImportCru
   const offset = Math.max(0, options.offset ?? 0);
   const limit = Math.max(1, Math.min(20, options.limit ?? 10));
   const selected = await mapWithConcurrency(orderedEntries.slice(offset, offset + limit), 4, enrichFromApple);
+  const existingListeningPosts = await readGhostPostsByTag(config, '#crucialtracks', { limit: 100, page: 1 });
+  const existingByIdentity = new Map(existingListeningPosts.map((post) => [postIdentity(post.title, post.published_at), post]));
   const results = [];
 
   for (const entry of selected) {
-    const slug = entrySlug(entry);
-    const existing = await findGhostPostBySlug(config, slug);
+    const slug = crucialTrackSlug(entry);
+    const existingBySlug = await findGhostPostBySlug(config, slug);
+    const existing = existingBySlug ?? existingByIdentity.get(entryIdentity(entry)) ?? null;
     if (options.dryRun) {
       results.push({ action: existing ? 'would-update' : 'would-create', slug, title: entry.title, sourceUrl: entry.sourceUrl });
       continue;

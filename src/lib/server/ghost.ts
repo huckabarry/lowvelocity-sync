@@ -225,6 +225,12 @@ export async function updateGhostHtmlEntry(
   return assertGhostPost(type === 'pages' ? body.pages?.[0] : body.posts?.[0]);
 }
 
+export async function deleteGhostPost(config: SyncConfig, post: GhostPost): Promise<void> {
+  const url = new URL(`/ghost/api/admin/posts/${encodeURIComponent(post.id)}/`, config.ghostUrl);
+  const response = await fetch(url, { method: 'DELETE', headers: await ghostHeaders(config) });
+  if (!response.ok) await readJsonResponse(response, 'Ghost Admin post delete');
+}
+
 export async function updateGhostPostFields(
   config: SyncConfig,
   existing: GhostPost,

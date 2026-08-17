@@ -10,7 +10,9 @@ import { blueskyUpdateReferencesSourceSite, ghostInputForBlueskyUpdate } from '.
 import { cleanBlueskyPostHtml } from '../src/lib/server/bluesky-cleanup.ts';
 import { ghostInputForSwarmCheckin } from '../src/lib/server/checkins-native.ts';
 import { ghostInputForPopfeedItem, type PopfeedImportItem } from '../src/lib/server/popfeed-native.ts';
-import { crucialTrackCustomExcerpt, type CrucialTrackEntry } from '../src/lib/server/crucial-tracks.ts';
+import { crucialTrackCustomExcerpt, crucialTrackIdentity, crucialTrackSlug, type CrucialTrackEntry } from '../src/lib/server/crucial-tracks.ts';
+import { duplicateCrucialTrackPosts } from '../src/lib/server/crucial-tracks-cleanup.ts';
+import type { GhostPost } from '../src/lib/server/ghost.ts';
 import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
 import { summarizeResult } from '../src/lib/server/ops-status.ts';
 import type { SyncConfig } from '../src/lib/server/config.ts';
@@ -53,6 +55,21 @@ test('uses only the listening note in Crucial Tracks excerpts', () => {
 
   assert.equal(crucialTrackCustomExcerpt(entry), 'Simpler times');
   assert.equal(crucialTrackCustomExcerpt({ ...entry, note: '' }), '');
+});
+
+test('matches a Crucial Track when its source URL calendar date changes', () => {
+  const entry: CrucialTrackEntry = { sourceUrl: 'https://www.crucialtracks.org/profile/bryan/20260727', title: 'Programmed Behind', artist: 'Cave In', publishedAt: '2026-07-28T02:54:41.000Z', albumTitle: null, albumReleaseYear: null, note: 'Simpler times', noteHtml: null, appleMusicUrl: null, songlinkUrl: null, previewUrl: null, artworkUrl: null, playlistUrl: null };
+  const oldUrlEntry = { ...entry, sourceUrl: 'https://www.crucialtracks.org/profile/bryan/20260728' };
+  assert.equal(crucialTrackIdentity(entry.title, entry.artist, entry.publishedAt), crucialTrackIdentity(oldUrlEntry.title, oldUrlEntry.artist, oldUrlEntry.publishedAt));
+  assert.notEqual(crucialTrackSlug(entry), crucialTrackSlug(oldUrlEntry));
+});
+
+test('selects only noncanonical Crucial Track posts for duplicate cleanup', () => {
+  const publishedAt = '2026-07-28T02:54:41.000Z';
+  const canonical: GhostPost = { id: '1', slug: 'listening-20260727-programmed-behind-cave-in', title: 'Programmed Behind — Cave In', status: 'published', url: 'https://lowvelocity.org/canonical/', published_at: publishedAt, updated_at: publishedAt };
+  const duplicate = { ...canonical, id: '2', slug: 'listening-20260728-programmed-behind-cave-in', url: 'https://lowvelocity.org/duplicate/' };
+  const identity = crucialTrackIdentity('Programmed Behind', 'Cave In', publishedAt);
+  assert.deepEqual(duplicateCrucialTrackPosts([canonical, duplicate], new Map([[identity, canonical.slug]])), [{ canonical, duplicate }]);
 });
 
 test('transforms a Ghost post into a Standard.site document', () => {
