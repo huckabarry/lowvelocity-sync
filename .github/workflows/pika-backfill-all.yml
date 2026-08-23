@@ -1,0 +1,35 @@
+name: Backfill remaining Bluesky archive to Pika
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pika-micropub-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill-remaining:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Import the remaining Bluesky originals as Pika drafts
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+          PIKA_MODE: backfill
+          OFFSET: '100'
+          BATCH_SIZE: '5000'
+        run: node --experimental-strip-types scripts/pika-pilot.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pika-backfill-remaining
+          path: pika-backfill-*.json

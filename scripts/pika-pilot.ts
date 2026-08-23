@@ -7,7 +7,7 @@ const MEDIA_ENDPOINT = 'https://pika.page/micropub/media';
 const TOKEN = process.env.PIKA_MICROPUB_TOKEN?.trim();
 const DRY_RUN = process.argv.includes('--dry-run');
 const BACKFILL = process.env.PIKA_MODE === 'backfill';
-const BATCH_SIZE = Math.max(1, Math.min(250, Number(process.env.BATCH_SIZE ?? 100) || 100));
+const BATCH_SIZE = Math.max(1, Math.min(5_000, Number(process.env.BATCH_SIZE ?? 100) || 100));
 const OFFSET = Math.max(0, Number(process.env.OFFSET ?? 0) || 0);
 const SKIP_URIS = new Set([
   `at://${DID}/app.bsky.feed.post/3mtrdzzvew22s`,
@@ -306,6 +306,7 @@ async function createDraftWithBackoff(candidate: Candidate): Promise<string> {
 
 const selected = (await fetchCandidates()).filter((candidate) => !CREATED_PILOT_URIS.has(candidate.uri));
 const report: Array<{ kind: CandidateKind; uri: string; createdAt: string; location?: string; error?: string }> = [];
+const reportPath = BACKFILL ? `pika-backfill-${OFFSET}-${OFFSET + selected.length}.json` : 'pika-pilot-report.json';
 for (const candidate of selected) {
   const entry = { kind: candidate.kind, uri: candidate.uri, createdAt: candidate.createdAt, location: undefined as string | undefined, error: undefined as string | undefined };
   if (!DRY_RUN) {
@@ -318,8 +319,8 @@ for (const candidate of selected) {
   }
   report.push(entry);
   console.log(JSON.stringify(entry));
+  await writeFile(reportPath, JSON.stringify({ dryRun: DRY_RUN, mode: BACKFILL ? 'backfill' : 'pilot', offset: OFFSET, batchSize: BATCH_SIZE, selected: report }, null, 2));
 }
 
-const reportPath = BACKFILL ? `pika-backfill-${OFFSET}-${OFFSET + selected.length}.json` : 'pika-pilot-report.json';
 await writeFile(reportPath, JSON.stringify({ dryRun: DRY_RUN, mode: BACKFILL ? 'backfill' : 'pilot', offset: OFFSET, batchSize: BATCH_SIZE, selected: report }, null, 2));
 if (report.some((entry) => entry.error)) process.exitCode = 1;
