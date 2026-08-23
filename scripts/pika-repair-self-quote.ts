@@ -5,7 +5,7 @@ if (!TOKEN) throw new Error('PIKA_MICROPUB_TOKEN is required');
 
 const endpoint = 'https://pika.page/micropub';
 const mediaEndpoint = 'https://pika.page/micropub/media';
-const draftUrl = 'https://pika.page/posts/2026-08-23-i-keep-coming-back-105ad33c/edit';
+const postUrl = 'https://bryan.pika.page/posts/2026-08-23-i-keep-coming-back';
 const uri = 'at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3msywtvhc6c2n';
 const cid = 'bafyreia4vxx2f4iqkuzb5ak4jexz6qvmzkxj6umx7zzddqdbknqf5djvhu';
 const quotedUri = 'at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3msxm2nvyvc2j';
@@ -73,13 +73,13 @@ const update = await fetch(endpoint, {
   headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
   body: JSON.stringify({
     action: 'update',
-    url: draftUrl,
+    url: postUrl,
     replace: {
       content: [content],
       category: ['bluesky'],
-      'post-status': ['draft']
+      'post-status': ['published']
     }
   })
 });
-if (!update.ok) throw new Error(`Pika draft repair failed: HTTP ${update.status} ${(await update.text()).slice(0, 200)}`);
-console.log(JSON.stringify({ repaired: true, draftUrl, uri }));
+if (!update.ok) throw new Error(`Pika post repair failed: HTTP ${update.status} ${(await update.text()).slice(0, 200)}`);
+console.log(JSON.stringify({ repaired: true, postUrl, uri }));
