@@ -189,21 +189,21 @@ function externalCard(external: ExternalView, localThumb?: string): string {
   ].filter(Boolean).join('\n');
 }
 
-function quoteCard(quote: QuoteView, localImages: Array<{ value: string; alt: string }>): string {
+function quoteCard(quote: QuoteView, imageCount: number): string {
   if (!quote.uri) return '';
   const handle = quote.author?.handle ?? '';
   const label = quote.author?.displayName || (handle ? `@${handle}` : 'Quoted post');
   return [
-    '<blockquote class="bluesky-import-card bluesky-import-card--quote">',
+    `<blockquote class="bluesky-import-card bluesky-import-card--quote" data-quote-images="${imageCount}">`,
     `  <a href="${escapeHtml(blueskyUrl(quote.uri, handle || HANDLE))}" rel="noopener noreferrer"><strong>${escapeHtml(label)}</strong></a>`,
     quote.value?.text ? `  <p>${escapeHtml(quote.value.text)}</p>` : '',
-    ...localImages.map((image) => `  <img src="${escapeHtml(image.value)}" alt="${escapeHtml(image.alt)}">`),
     '</blockquote>'
   ].filter(Boolean).join('\n');
 }
 
 async function buildContent(candidate: Candidate): Promise<string> {
   const parts = [escapeMarkdown(candidate.text)];
+  let quoteImages: Array<{ value: string; alt: string }> = [];
   if (candidate.kind === 'image') {
     const uploaded = [];
     for (const [index, image] of images(candidate.embed).entries()) uploaded.push(await uploadImage(image, index));
@@ -218,9 +218,8 @@ async function buildContent(candidate: Candidate): Promise<string> {
   }
   if (candidate.kind === 'quote') {
     const quote = candidate.embed.record ?? {};
-    const localImages = [];
-    for (const [index, image] of images(quote.embeds?.[0] ?? {}).entries()) localImages.push(await uploadImage(image, index));
-    card = quoteCard(quote, localImages);
+    for (const [index, image] of images(quote.embeds?.[0] ?? {}).entries()) quoteImages.push(await uploadImage(image, index));
+    card = quoteCard(quote, quoteImages.length);
   }
   if (candidate.kind === 'video') {
     const thumbnail = candidate.embed.thumbnail ?? candidate.embed.media?.thumbnail;
@@ -237,6 +236,7 @@ async function buildContent(candidate: Candidate): Promise<string> {
 
   const marker = `<div class="bluesky-conversation" data-at-uri="${escapeHtml(candidate.uri)}" data-cid="${escapeHtml(candidate.cid)}"></div>`;
   if (card) parts.push(`\`\`\`pikahtml\n${card}\n\`\`\``);
+  for (const photo of quoteImages) parts.push(`![${escapeMarkdown(photo.alt)}](${photo.value})`);
   parts.push(`\`\`\`pikahtml\n${marker}\n\`\`\``);
   return parts.filter(Boolean).join('\n\n');
 }
