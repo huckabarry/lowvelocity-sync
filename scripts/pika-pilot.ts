@@ -9,6 +9,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const BACKFILL = process.env.PIKA_MODE === 'backfill';
 const BATCH_SIZE = Math.max(1, Math.min(5_000, Number(process.env.BATCH_SIZE ?? 100) || 100));
 const OFFSET = Math.max(0, Number(process.env.OFFSET ?? 0) || 0);
+const ONLY_URIS = new Set((process.env.ONLY_URIS ?? '').split(',').map((value) => value.trim()).filter(Boolean));
 const SKIP_URIS = new Set([
   `at://${DID}/app.bsky.feed.post/3mtrdzzvew22s`,
   `at://${DID}/app.bsky.feed.post/3mtrdgzvky22s`,
@@ -140,6 +141,7 @@ async function fetchCandidates(): Promise<Candidate[]> {
   if (BACKFILL) {
     return candidates
       .filter((candidate) => !CREATED_PILOT_URIS.has(candidate.uri))
+      .filter((candidate) => ONLY_URIS.size === 0 || ONLY_URIS.has(candidate.uri))
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
       .slice(OFFSET, OFFSET + BATCH_SIZE);
   }
@@ -161,6 +163,11 @@ async function uploadSource(source: string, alt: string, index: number): Promise
   const response = await fetch(source);
   if (!response.ok) throw new Error(`Bluesky image download failed: HTTP ${response.status}`);
   const blob = await response.blob();
+  return uploadBlob(blob, alt, index);
+}
+
+async function uploadBlob(blob: Blob, alt: string, index: number): Promise<{ value: string; alt: string }> {
+  if (!TOKEN) throw new Error('PIKA_MICROPUB_TOKEN is required');
   const form = new FormData();
   form.set('file', blob, `bluesky-${index + 1}.${blob.type === 'image/png' ? 'png' : 'jpg'}`);
   const upload = await pikaFetch(MEDIA_ENDPOINT, {
@@ -192,7 +199,25 @@ async function pikaFetch(url: string, init: RequestInit): Promise<Response> {
 async function uploadImage(image: ImageView, index: number): Promise<{ value: string; alt: string }> {
   const source = image.fullsize ?? image.thumb ?? image.thumbnail;
   if (!source) throw new Error('Bluesky image has no usable URL');
-  return uploadSource(source, image.alt ?? '', index);
+  try {
+    return await uploadSource(source, image.alt ?? '', index);
+  } catch (cdnError) {
+    const match = source.match(/\/plain\/([^/]+)\/([^/@?]+)/);
+    if (!match) throw cdnError;
+    const did = decodeURIComponent(match[1]);
+    const cid = match[2];
+    const didResponse = await fetch(`https://plc.directory/${encodeURIComponent(did)}`);
+    if (!didResponse.ok) throw cdnError;
+    const didDocument = await didResponse.json() as { service?: Array<{ type?: string; serviceEndpoint?: string }> };
+    const pds = didDocument.service?.find((service) => service.type === 'AtprotoPersonalDataServer')?.serviceEndpoint;
+    if (!pds) throw cdnError;
+    const blobUrl = new URL('/xrpc/com.atproto.sync.getBlob', pds);
+    blobUrl.searchParams.set('did', did);
+    blobUrl.searchParams.set('cid', cid);
+    const blobResponse = await fetch(blobUrl);
+    if (!blobResponse.ok) throw cdnError;
+    return uploadBlob(await blobResponse.blob(), image.alt ?? '', index);
+  }
 }
 
 function externalCard(external: ExternalView, localThumb?: string): string {
@@ -229,8 +254,15 @@ async function buildContent(candidate: Candidate): Promise<string> {
   let quoteImages: Array<{ value: string; alt: string }> = [];
   if (candidate.kind === 'image') {
     const uploaded = [];
-    for (const [index, image] of images(candidate.embed).entries()) uploaded.push(await uploadImage(image, index));
+    for (const [index, image] of images(candidate.embed).entries()) {
+      try {
+        uploaded.push(await uploadImage(image, index));
+      } catch (error) {
+        console.warn(JSON.stringify({ imageUnavailable: true, uri: candidate.uri, index, error: error instanceof Error ? error.message : String(error) }));
+      }
+    }
     for (const photo of uploaded) parts.push(`![${escapeMarkdown(photo.alt)}](${photo.value})`);
+    if (uploaded.length === 0) parts.push(`[View the original image post on Bluesky](${blueskyUrl(candidate.uri)})`);
   }
 
   let card = '';
@@ -241,7 +273,13 @@ async function buildContent(candidate: Candidate): Promise<string> {
   }
   if (candidate.kind === 'quote') {
     const quote = candidate.embed.record ?? {};
-    for (const [index, image] of images(quote.embeds?.[0] ?? {}).entries()) quoteImages.push(await uploadImage(image, index));
+    for (const [index, image] of images(quote.embeds?.[0] ?? {}).entries()) {
+      try {
+        quoteImages.push(await uploadImage(image, index));
+      } catch (error) {
+        console.warn(JSON.stringify({ quoteImageUnavailable: true, uri: candidate.uri, index, error: error instanceof Error ? error.message : String(error) }));
+      }
+    }
     card = quoteCard(quote, quoteImages.length);
   }
   if (candidate.kind === 'video') {

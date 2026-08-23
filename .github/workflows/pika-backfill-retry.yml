@@ -1,0 +1,50 @@
+name: Retry failed Pika Bluesky image imports
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pika-micropub-backfill
+  cancel-in-progress: false
+
+jobs:
+  retry-failed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Retry only the failed archive records
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+          PIKA_MODE: backfill
+          OFFSET: '0'
+          BATCH_SIZE: '100'
+          ONLY_URIS: >-
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3ln4wm3dg7v26,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3llncx4mbcp2m,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3lliag53qgy24,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3ljydnv72ao2x,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kx5ie2yazp2c,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kwiklzkhro2u,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3krc3l62nfm2u,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kqm7molnhs2g,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kqlnzvgjlk2a,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kq2lxjrts424,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kpaxtkrswb22,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kmp6fghyr72x,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3kixrkjdhvc2j,
+            at://did:plc:vt4k6d3e5rjw65cuzaf3nufq/app.bsky.feed.post/3jxqlqy7vzz2e
+        run: node --experimental-strip-types scripts/pika-pilot.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pika-backfill-retry
+          path: pika-backfill-*.json
