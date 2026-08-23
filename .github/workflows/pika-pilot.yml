@@ -1,0 +1,27 @@
+name: Create Pika Bluesky pilot drafts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create varied Pika draft pilot
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+        run: node --experimental-strip-types scripts/pika-pilot.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pika-pilot-report
+          path: pika-pilot-report.json
+
