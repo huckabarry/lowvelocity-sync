@@ -15,6 +15,7 @@ import { duplicateCrucialTrackPosts } from '../src/lib/server/crucial-tracks-cle
 import type { GhostPost } from '../src/lib/server/ghost.ts';
 import { buildFoursquareAuthorizationUrl, createFoursquareOAuthState, verifyFoursquareOAuthState } from '../src/lib/server/foursquare-oauth.ts';
 import { summarizeResult } from '../src/lib/server/ops-status.ts';
+import { createPikaPost, verifyPikaMicropub } from '../src/lib/server/pika.ts';
 import type { SyncConfig } from '../src/lib/server/config.ts';
 
 const baseConfig: SyncConfig = {
@@ -33,8 +34,56 @@ const baseConfig: SyncConfig = {
   foursquareClientSecret: 'client-secret',
   atprotoAppPassword: 'app-password',
   publicationUri: 'at://did:plc:test/site.standard.publication/self',
+  pikaMicropubEndpoint: 'https://pika.page/micropub',
+  pikaMicropubToken: 'pika-test-token',
   standardSiteSyncEnabled: true
 };
+
+test('verifies Pika Micropub access without exposing the token', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return Response.json({ 'media-endpoint': 'https://pika.page/micropub/media' });
+  };
+  try {
+    assert.equal(await verifyPikaMicropub(baseConfig), 'https://pika.page/micropub/media');
+    assert.equal(new URL(request!.url).searchParams.get('q'), 'config');
+    assert.equal(request!.headers.get('authorization'), 'Bearer pika-test-token');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('creates Pika drafts with title and categories', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return new Response(null, { status: 201, headers: { location: 'https://example.pika.page/posts/test-draft/edit' } });
+  };
+  try {
+    const result = await createPikaPost(baseConfig, {
+      content: 'A draft body.',
+      title: 'Draft title',
+      categories: ['Field Notes'],
+      status: 'draft'
+    });
+    assert.equal(result.location, 'https://example.pika.page/posts/test-draft/edit');
+    assert.equal(result.status, 'draft');
+    assert.deepEqual(await request!.json(), {
+      type: ['h-entry'],
+      properties: {
+        content: ['A draft body.'],
+        'post-status': ['draft'],
+        name: ['Draft title'],
+        category: ['Field Notes']
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('uses only the listening note in Crucial Tracks excerpts', () => {
   const entry: CrucialTrackEntry = {

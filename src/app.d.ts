@@ -7,6 +7,7 @@ declare global {
     GHOST_ADMIN_API_KEY: string;
     GHOST_STAFF_ACCESS_TOKEN: string;
     GHOST_WEBHOOK_SECRET: string;
+    PIKA_MICROPUB_TOKEN?: string;
     SWARM_ACCESS_TOKEN?: string;
   }
 
@@ -20,6 +21,7 @@ declare global {
     GHOST_URL: string;
     MEDIA_PDS_DID?: string;
     MEDIA_PDS_SERVICE?: string;
+    PIKA_MICROPUB_ENDPOINT?: string;
     PUBLICATION_URI: string;
     STANDARD_SITE_SYNC_ENABLED?: string;
   }

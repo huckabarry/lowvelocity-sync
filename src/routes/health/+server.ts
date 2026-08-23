@@ -43,6 +43,11 @@ export const GET: RequestHandler = async ({ platform }) => {
           source: 'Ghost Admin webhook events',
           destination: 'Standard.site document records for eligible posts',
           last: operations.last.ghostWebhook
+        },
+        pikaMicropub: {
+          cadence: 'manual until a source flow is enabled',
+          source: 'protected worker endpoint',
+          destination: 'Pika drafts'
         }
       }
     },

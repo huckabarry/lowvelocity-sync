@@ -15,6 +15,8 @@ export interface SyncConfig {
   foursquareClientSecret?: string;
   atprotoAppPassword: string;
   publicationUri: string;
+  pikaMicropubEndpoint: string;
+  pikaMicropubToken?: string;
   standardSiteSyncEnabled: boolean;
 }
 
@@ -66,6 +68,8 @@ export function getSyncConfig(platform: App.Platform | undefined): SyncConfig {
     foursquareClientSecret: optional(platform.env, 'FOURSQUARE_CLIENT_SECRET'),
     atprotoAppPassword: required(platform.env, 'ATPROTO_APP_PASSWORD'),
     publicationUri: required(platform.env, 'PUBLICATION_URI'),
+    pikaMicropubEndpoint: (optional(platform.env, 'PIKA_MICROPUB_ENDPOINT') ?? 'https://pika.page/micropub').replace(/\/$/, ''),
+    pikaMicropubToken: optional(platform.env, 'PIKA_MICROPUB_TOKEN'),
     standardSiteSyncEnabled: optional(platform.env, 'STANDARD_SITE_SYNC_ENABLED') !== 'false'
   };
 }
@@ -78,6 +82,7 @@ export function configurationStatus(platform: App.Platform | undefined) {
     atproto: Boolean(env?.ATPROTO_SERVICE && env?.ATPROTO_IDENTIFIER && env?.ATPROTO_DID && env?.ATPROTO_APP_PASSWORD && env?.PUBLICATION_URI),
     blueskyUpdates: Boolean(env?.BLUESKY_UPDATES_IDENTIFIER && env?.BLUESKY_UPDATES_DID),
     mediaPds: Boolean((env?.MEDIA_PDS_SERVICE || 'https://eurosky.social') && (env?.MEDIA_PDS_DID || 'did:plc:vt4k6d3e5rjw65cuzaf3nufq')),
+    pikaMicropub: Boolean(env?.PIKA_MICROPUB_TOKEN),
     checkins: Boolean(env?.FOURSQUARE_ACCESS_TOKEN || env?.SWARM_ACCESS_TOKEN),
     checkinsTokenStore: Boolean(env?.CHECKINS_KV),
     checkinsOAuth: Boolean(env?.FOURSQUARE_CLIENT_ID && env?.FOURSQUARE_CLIENT_SECRET),
