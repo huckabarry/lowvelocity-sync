@@ -1,0 +1,44 @@
+name: Backfill Bluesky posts to Pika
+
+on:
+  workflow_dispatch:
+    inputs:
+      offset:
+        description: Eligible post offset, newest first
+        required: true
+        default: '0'
+      batch_size:
+        description: Number of drafts to create, maximum 250
+        required: true
+        default: '100'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pika-micropub-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Import Bluesky originals as Pika drafts
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+          PIKA_MODE: backfill
+          OFFSET: ${{ inputs.offset }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+        run: node --experimental-strip-types scripts/pika-pilot.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pika-backfill-${{ inputs.offset }}
+          path: pika-backfill-*.json

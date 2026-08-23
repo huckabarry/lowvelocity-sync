@@ -6,6 +6,9 @@ const PIKA_ENDPOINT = 'https://pika.page/micropub';
 const MEDIA_ENDPOINT = 'https://pika.page/micropub/media';
 const TOKEN = process.env.PIKA_MICROPUB_TOKEN?.trim();
 const DRY_RUN = process.argv.includes('--dry-run');
+const BACKFILL = process.env.PIKA_MODE === 'backfill';
+const BATCH_SIZE = Math.max(1, Math.min(250, Number(process.env.BATCH_SIZE ?? 100) || 100));
+const OFFSET = Math.max(0, Number(process.env.OFFSET ?? 0) || 0);
 const SKIP_URIS = new Set([
   `at://${DID}/app.bsky.feed.post/3mtrdzzvew22s`,
   `at://${DID}/app.bsky.feed.post/3mtrdgzvky22s`,
@@ -16,10 +19,11 @@ const CREATED_PILOT_URIS = new Set([
   `at://${DID}/app.bsky.feed.post/3mtnmsbmuec2e`,
   `at://${DID}/app.bsky.feed.post/3mtndw47rxs2v`,
   `at://${DID}/app.bsky.feed.post/3mtmqerdihk2t`,
-  `at://${DID}/app.bsky.feed.post/3mtmlsk4rps2i`
+  `at://${DID}/app.bsky.feed.post/3mtmlsk4rps2i`,
+  `at://${DID}/app.bsky.feed.post/3msywtvhc6c2n`
 ]);
 
-type CandidateKind = 'external' | 'quote' | 'image' | 'video';
+type CandidateKind = 'plain' | 'external' | 'quote' | 'image' | 'video';
 
 interface FeedItem {
   reason?: unknown;
@@ -90,20 +94,20 @@ function blueskyUrl(uri: string, handle = HANDLE): string {
   return `https://bsky.app/profile/${encodeURIComponent(handle)}/post/${encodeURIComponent(uri.split('/').at(-1) ?? '')}`;
 }
 
-function classify(embed: EmbedView | undefined): CandidateKind | null {
+function classify(embed: EmbedView | undefined): CandidateKind {
   const type = embed?.$type ?? '';
   if (type.includes('video#view') || embed?.playlist || embed?.media?.playlist) return 'video';
   if (embed?.record?.uri) return 'quote';
   if (embed?.external?.uri || embed?.media?.external?.uri) return 'external';
   if ((embed?.images?.length ?? 0) > 0 || (embed?.items?.length ?? 0) > 0 || (embed?.media?.images?.length ?? 0) > 0) return 'image';
-  return null;
+  return 'plain';
 }
 
 async function fetchCandidates(): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
   let cursor: string | undefined;
 
-  for (let page = 0; page < 15; page += 1) {
+  for (let page = 0; page < (BACKFILL ? 100 : 15); page += 1) {
     const url = new URL('/xrpc/app.bsky.feed.getAuthorFeed', 'https://public.api.bsky.app');
     url.searchParams.set('actor', DID);
     url.searchParams.set('filter', 'posts_with_replies');
@@ -116,17 +120,16 @@ async function fetchCandidates(): Promise<Candidate[]> {
     for (const item of body.feed ?? []) {
       const post = item.post;
       const record = post?.record;
-      if (!post?.uri || !post.cid || !record?.createdAt || !post.embed) continue;
+      if (!post?.uri || !post.cid || !record?.createdAt) continue;
       if (post.author?.did !== DID || item.reason || record.reply || SKIP_URIS.has(post.uri)) continue;
       const kind = classify(post.embed);
-      if (!kind) continue;
       candidates.push({
         kind,
         uri: post.uri,
         cid: post.cid,
         text: record.text ?? '',
         createdAt: record.createdAt,
-        embed: post.embed
+        embed: post.embed ?? {}
       });
     }
 
@@ -134,9 +137,16 @@ async function fetchCandidates(): Promise<Candidate[]> {
     if (!cursor) break;
   }
 
-  const targets: Record<CandidateKind, number> = { external: 3, quote: 3, image: 2, video: 1 };
+  if (BACKFILL) {
+    return candidates
+      .filter((candidate) => !CREATED_PILOT_URIS.has(candidate.uri))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .slice(OFFSET, OFFSET + BATCH_SIZE);
+  }
+
+  const targets: Record<Exclude<CandidateKind, 'plain'>, number> = { external: 3, quote: 3, image: 2, video: 1 };
   const selected: Candidate[] = [];
-  for (const kind of Object.keys(targets) as CandidateKind[]) {
+  for (const kind of Object.keys(targets) as Array<Exclude<CandidateKind, 'plain'>>) {
     selected.push(...candidates.filter((candidate) => candidate.kind === kind).slice(0, targets[kind]));
   }
   return selected.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -153,7 +163,7 @@ async function uploadSource(source: string, alt: string, index: number): Promise
   const blob = await response.blob();
   const form = new FormData();
   form.set('file', blob, `bluesky-${index + 1}.${blob.type === 'image/png' ? 'png' : 'jpg'}`);
-  const upload = await fetch(MEDIA_ENDPOINT, {
+  const upload = await pikaFetch(MEDIA_ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}` },
     body: form
@@ -164,6 +174,19 @@ async function uploadSource(source: string, alt: string, index: number): Promise
     throw new Error(`Pika media upload failed: HTTP ${upload.status} ${detail}`);
   }
   return { value: location, alt };
+}
+
+async function pikaFetch(url: string, init: RequestInit): Promise<Response> {
+  let delay = 60_000;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await fetch(url, init);
+    if (response.status !== 429 || attempt === 4) return response;
+    console.warn(JSON.stringify({ rateLimited: true, endpoint: new URL(url).pathname, retryInMs: delay }));
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay *= 2;
+  }
+  throw new Error('Pika backoff exhausted');
 }
 
 async function uploadImage(image: ImageView, index: number): Promise<{ value: string; alt: string }> {
@@ -244,7 +267,7 @@ async function buildContent(candidate: Candidate): Promise<string> {
 async function createDraft(candidate: Candidate): Promise<string> {
   if (!TOKEN) throw new Error('PIKA_MICROPUB_TOKEN is required');
   const content = await buildContent(candidate);
-  const response = await fetch(PIKA_ENDPOINT, {
+  const response = await pikaFetch(PIKA_ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -265,16 +288,38 @@ async function createDraft(candidate: Candidate): Promise<string> {
   return location;
 }
 
+async function createDraftWithBackoff(candidate: Candidate): Promise<string> {
+  let delay = 60_000;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await createDraft(candidate);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('HTTP 429') || attempt === 4) throw error;
+      console.warn(JSON.stringify({ rateLimited: true, uri: candidate.uri, retryInMs: delay }));
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+  throw new Error('Pika backoff exhausted');
+}
+
 const selected = (await fetchCandidates()).filter((candidate) => !CREATED_PILOT_URIS.has(candidate.uri));
-const report: Array<{ kind: CandidateKind; uri: string; createdAt: string; location?: string }> = [];
+const report: Array<{ kind: CandidateKind; uri: string; createdAt: string; location?: string; error?: string }> = [];
 for (const candidate of selected) {
-  const entry = { kind: candidate.kind, uri: candidate.uri, createdAt: candidate.createdAt, location: undefined as string | undefined };
+  const entry = { kind: candidate.kind, uri: candidate.uri, createdAt: candidate.createdAt, location: undefined as string | undefined, error: undefined as string | undefined };
   if (!DRY_RUN) {
-    entry.location = await createDraft(candidate);
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    try {
+      entry.location = await createDraftWithBackoff(candidate);
+    } catch (error) {
+      entry.error = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, BACKFILL ? 2_000 : 1_000));
   }
   report.push(entry);
   console.log(JSON.stringify(entry));
 }
 
-await writeFile('pika-pilot-report.json', JSON.stringify({ dryRun: DRY_RUN, selected: report }, null, 2));
+const reportPath = BACKFILL ? `pika-backfill-${OFFSET}-${OFFSET + selected.length}.json` : 'pika-pilot-report.json';
+await writeFile(reportPath, JSON.stringify({ dryRun: DRY_RUN, mode: BACKFILL ? 'backfill' : 'pilot', offset: OFFSET, batchSize: BATCH_SIZE, selected: report }, null, 2));
+if (report.some((entry) => entry.error)) process.exitCode = 1;
