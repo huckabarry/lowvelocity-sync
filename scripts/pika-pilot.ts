@@ -12,6 +12,12 @@ const SKIP_URIS = new Set([
   `at://${DID}/app.bsky.feed.post/3mtptmwdofs2o`,
   `at://${DID}/app.bsky.feed.post/3mtpavckbms2o`
 ]);
+const CREATED_PILOT_URIS = new Set([
+  `at://${DID}/app.bsky.feed.post/3mtnmsbmuec2e`,
+  `at://${DID}/app.bsky.feed.post/3mtndw47rxs2v`,
+  `at://${DID}/app.bsky.feed.post/3mtmqerdihk2t`,
+  `at://${DID}/app.bsky.feed.post/3mtmlsk4rps2i`
+]);
 
 type CandidateKind = 'external' | 'quote' | 'image' | 'video';
 
@@ -153,7 +159,10 @@ async function uploadSource(source: string, alt: string, index: number): Promise
     body: form
   });
   const location = upload.headers.get('location');
-  if (upload.status !== 201 || !location) throw new Error(`Pika media upload failed: HTTP ${upload.status}`);
+  if (upload.status !== 201 || !location) {
+    const detail = (await upload.text()).slice(0, 200);
+    throw new Error(`Pika media upload failed: HTTP ${upload.status} ${detail}`);
+  }
   return { value: location, alt };
 }
 
@@ -204,7 +213,7 @@ async function buildContent(candidate: Candidate): Promise<string> {
   let card = '';
   if (candidate.kind === 'external') {
     const external = candidate.embed.external ?? candidate.embed.media?.external ?? {};
-    const localThumb = external.thumb ? (await uploadSource(external.thumb, '', 0)).value : undefined;
+    const localThumb = external.thumb ? await uploadSource(external.thumb, '', 0).then((image) => image.value).catch(() => undefined) : undefined;
     card = externalCard(external, localThumb);
   }
   if (candidate.kind === 'quote') {
@@ -215,7 +224,7 @@ async function buildContent(candidate: Candidate): Promise<string> {
   }
   if (candidate.kind === 'video') {
     const thumbnail = candidate.embed.thumbnail ?? candidate.embed.media?.thumbnail;
-    const localPoster = thumbnail ? (await uploadSource(thumbnail, '', 0)).value : undefined;
+    const localPoster = thumbnail ? await uploadSource(thumbnail, '', 0).then((image) => image.value).catch(() => undefined) : undefined;
     card = [
       '<p class="bluesky-import-video">',
       `  <a href="${escapeHtml(blueskyUrl(candidate.uri))}" rel="noopener noreferrer">`,
@@ -256,7 +265,7 @@ async function createDraft(candidate: Candidate): Promise<string> {
   return location;
 }
 
-const selected = await fetchCandidates();
+const selected = (await fetchCandidates()).filter((candidate) => !CREATED_PILOT_URIS.has(candidate.uri));
 const report: Array<{ kind: CandidateKind; uri: string; createdAt: string; location?: string }> = [];
 for (const candidate of selected) {
   const entry = { kind: candidate.kind, uri: candidate.uri, createdAt: candidate.createdAt, location: undefined as string | undefined };
