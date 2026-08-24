@@ -6,6 +6,7 @@ const TOKEN = process.env.PIKA_MICROPUB_TOKEN?.trim();
 const REPORTS_DIR = process.env.REPORTS_DIR ?? 'pika-import-reports';
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH ?? 'pika-publish-checkpoint.json';
 const EXPECTED_COUNT = Number(process.env.EXPECTED_COUNT ?? 1_889);
+const START_INDEX = Math.max(0, Number(process.env.START_INDEX ?? 0));
 const DELAY_MS = Math.max(0, Number(process.env.DELAY_MS ?? 2_000));
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -97,8 +98,9 @@ async function publish(entry: PublishEntry): Promise<void> {
 }
 
 const imports = await loadImports();
+const remaining = imports.slice(START_INDEX);
 const report: PublishEntry[] = [];
-for (const source of imports) {
+for (const source of remaining) {
   const entry: PublishEntry = { ...source };
   delete entry.error;
   if (!DRY_RUN) {
@@ -111,8 +113,8 @@ for (const source of imports) {
   }
   report.push(entry);
   console.log(JSON.stringify({ uri: entry.uri, url: entry.url, status: entry.status, error: entry.error }));
-  await writeFile(CHECKPOINT_PATH, JSON.stringify({ dryRun: DRY_RUN, expected: EXPECTED_COUNT, processed: report.length, results: report }, null, 2));
-  if (!DRY_RUN && report.length < imports.length) await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+  await writeFile(CHECKPOINT_PATH, JSON.stringify({ dryRun: DRY_RUN, expected: EXPECTED_COUNT, startIndex: START_INDEX, selected: remaining.length, processed: report.length, results: report }, null, 2));
+  if (!DRY_RUN && report.length < remaining.length) await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
 }
 
 if (report.some((entry) => entry.error)) process.exitCode = 1;

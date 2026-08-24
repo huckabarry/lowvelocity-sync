@@ -55,6 +55,7 @@ jobs:
           PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
           REPORTS_DIR: pika-import-reports
           EXPECTED_COUNT: '1889'
+          START_INDEX: '1253'
           DELAY_MS: '2000'
         run: node --experimental-strip-types scripts/pika-publish-imports.ts
       - uses: actions/upload-artifact@v4
