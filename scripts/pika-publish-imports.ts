@@ -90,7 +90,7 @@ async function publish(entry: PublishEntry): Promise<void> {
       published: [entry.createdAt]
     }
   });
-  if (response.status !== 200) {
+  if (response.status !== 200 && response.status !== 201) {
     const detail = (await response.text()).slice(0, 300);
     throw new Error(`Pika publish update failed: HTTP ${response.status} ${detail}`);
   }

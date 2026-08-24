@@ -1,0 +1,32 @@
+name: Correct Pika import dates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pika-micropub-backfill
+  cancel-in-progress: false
+
+jobs:
+  correct-dates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Restore original Bluesky publication dates
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+        run: node --experimental-strip-types scripts/pika-fix-import-dates.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pika-date-corrections
+          path: pika-date-corrections.json
