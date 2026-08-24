@@ -1,0 +1,64 @@
+name: Publish imported Bluesky drafts on Pika
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: pika-micropub-backfill
+  cancel-in-progress: false
+
+jobs:
+  publish-imports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '32662623697'
+          name: pika-backfill-0
+          path: pika-import-reports/first-pass
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '32663270286'
+          name: pika-backfill-29
+          path: pika-import-reports/first-retry
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '32663436504'
+          name: pika-backfill-remaining
+          path: pika-import-reports/remaining
+      - uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '32669896378'
+          name: pika-backfill-retry
+          path: pika-import-reports/remaining-retry
+      - name: Publish imported drafts in place
+        env:
+          PIKA_MICROPUB_TOKEN: ${{ secrets.PIKA_MICROPUB_TOKEN }}
+          REPORTS_DIR: pika-import-reports
+          EXPECTED_COUNT: '1889'
+          DELAY_MS: '2000'
+        run: node --experimental-strip-types scripts/pika-publish-imports.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pika-publish-checkpoint
+          path: pika-publish-checkpoint.json
