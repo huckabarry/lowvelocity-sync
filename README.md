@@ -22,6 +22,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full operating model.
 - `POST /admin/cleanup/bluesky` — protected cleanup path for imported Bluesky posts.
 - `POST /admin/activitypub/test-note` — protected Ghost Social Web note test endpoint.
 - `POST /webhooks/ghost` — signed Ghost post synchronization webhook
+- `POST /mcp` — read-only MCP server for Claude custom connectors (OAuth-protected; off until configured, see below)
+- `GET /oauth/authorize`, `POST /oauth/token`, `POST /oauth/register` — the OAuth endpoints that protect `/mcp`
+- `GET /.well-known/oauth-protected-resource/mcp`, `GET /.well-known/oauth-authorization-server` — OAuth discovery metadata for `/mcp`
 
 The Worker only handles its configured Cloudflare routes. All other
 `lowvelocity.org` traffic continues directly to Ghost.
@@ -66,7 +69,8 @@ Secrets must be added with `wrangler secret put`; they do not belong in this
 repository or `wrangler.jsonc`.
 
 Pushes to `main` are tested, built, and deployed automatically by GitHub
-Actions. The repository must contain `CLOUDFLARE_ACCOUNT_ID` and a narrowly
+Actions (`.github/workflows/ci.yml`). Pull requests run the same tests and
+build but do not deploy, so merging a PR is what ships it. The repository must contain `CLOUDFLARE_ACCOUNT_ID` and a narrowly
 scoped `CLOUDFLARE_API_TOKEN` as GitHub Actions secrets. Runtime application
 secrets remain stored in Cloudflare and are preserved across deployments.
 
@@ -80,6 +84,13 @@ npx wrangler secret put ATPROTO_APP_PASSWORD
 npx wrangler secret put FOURSQUARE_CLIENT_ID
 npx wrangler secret put FOURSQUARE_CLIENT_SECRET
 npx wrangler secret put FOURSQUARE_ACCESS_TOKEN
+```
+
+Optional secrets for the read-only MCP connector (see below):
+
+```sh
+npx wrangler secret put MCP_TOKEN_SECRET
+npx wrangler secret put MCP_OWNER_PASSWORD
 ```
 
 `CHECKINS_KV` stores the current Foursquare token from OAuth and last-run
@@ -105,6 +116,80 @@ Configure four Ghost webhooks with the same target URL and secret:
 - `post.deleted`
 
 Target: `https://sync.lowvelocity.org/webhooks/ghost`
+
+## Read-only MCP connector (Claude)
+
+`https://sync.lowvelocity.org/mcp` lets Claude find and read Low Velocity
+content as a custom connector, on any device including the phone apps. It is
+read-only: every Ghost call it makes is a `GET` with the existing
+`GHOST_ADMIN_API_KEY`, and it has no tools that publish, edit, or delete.
+
+Tools:
+
+| Tool | What it does |
+| --- | --- |
+| `search_posts` | Find posts by title text, tag, and status (drafts included by default) |
+| `get_post` | Read one post in full by id, slug, or site URL, as text or HTML |
+| `search_pages` | Same as `search_posts`, for pages |
+| `get_page` | Same as `get_post`, for pages |
+| `list_tags` | List tags with post counts (public only unless asked) |
+
+### How access is protected
+
+Claude custom connectors support OAuth, so the Worker includes a small OAuth
+2.1 server (`src/lib/server/mcp/oauth.ts`):
+
+- Claude registers itself automatically (dynamic client registration), but only
+  Claude's own callback URLs are accepted (`MCP_ALLOWED_REDIRECT_URIS`).
+- Connecting opens a page on `sync.lowvelocity.org` that asks for the **owner
+  passphrase** (`MCP_OWNER_PASSWORD`). Without it, no token is issued. Ten
+  wrong attempts in an hour lock the page until the next hour.
+- PKCE is required, authorization codes expire in 5 minutes and are single-use,
+  access tokens last 1 hour, and refresh tokens last 30 days.
+- Tokens are signed with a key derived from `MCP_TOKEN_SECRET` and
+  `MCP_OWNER_PASSWORD`. **Changing either secret disconnects every client.**
+- Tokens only work on `/mcp`. They cannot call the `/admin/*` routes.
+- The only state stored is a "code used" marker and the failed-login counter,
+  both short-lived keys in `CHECKINS_KV` under the `mcp:` prefix.
+
+### Turning it on
+
+The connector stays off (all of these routes return 404) until both secrets
+exist. Set them once; deployments keep them.
+
+```sh
+# A random signing secret (32+ characters)
+openssl rand -base64 48 | npx wrangler secret put MCP_TOKEN_SECRET
+
+# A passphrase you will type when connecting (16+ characters)
+npx wrangler secret put MCP_OWNER_PASSWORD
+```
+
+Or in the Cloudflare dashboard: Workers & Pages → `lowvelocity-sync` →
+Settings → Variables and Secrets → Add, type **Secret**, for each name.
+Adding a secret in the dashboard takes effect immediately.
+
+`GET /health` reports `"mcp": true` once both are set.
+
+Optional variables (in `wrangler.jsonc`):
+
+- `MCP_PUBLIC_ORIGIN` (set to `https://sync.lowvelocity.org`) pins the OAuth
+  issuer and token audience, so tokens behave the same on the custom domain
+  and `workers.dev`.
+- `MCP_ALLOWED_REDIRECT_URIS` overrides the redirect allowlist (comma or space
+  separated). The default is Claude's two callbacks:
+  `https://claude.ai/api/mcp/auth_callback` and
+  `https://claude.com/api/mcp/auth_callback`.
+
+### Connecting Claude
+
+1. In Claude, open Settings → Connectors → Add custom connector.
+2. Name it (for example "Low Velocity") and enter
+   `https://sync.lowvelocity.org/mcp`. Leave the advanced OAuth fields empty.
+3. Select Connect. A Low Velocity page opens; enter the owner passphrase and
+   choose Allow.
+
+To disconnect everything at once, change `MCP_OWNER_PASSWORD`.
 
 ## Manual operations
 

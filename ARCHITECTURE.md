@@ -28,6 +28,22 @@ Imported Bluesky, Crucial Tracks, check-in, and Popfeed media posts are
 intentionally excluded from Standard.site sync. The exclusion list lives in
 `src/lib/server/sync.ts`.
 
+## Read-only MCP connector
+
+`POST /mcp` is a stateless MCP server (Streamable HTTP, JSON responses) that
+lets Claude search and read Ghost posts, pages, and tags through the Ghost
+Admin API using `GET` requests only. It is guarded by a self-contained OAuth
+2.1 authorization server (`/oauth/*` and `/.well-known/oauth-*`) that requires
+the owner passphrase to approve a connection. Code lives in
+`src/lib/server/mcp/`.
+
+It does not touch the cron schedule, the importers, the Ghost webhook, or
+Standard.site sync, and MCP tokens are not accepted by the `/admin/*` routes.
+It is disabled unless `MCP_TOKEN_SECRET` and `MCP_OWNER_PASSWORD` are set.
+SvelteKit's form-origin CSRF check is disabled in `svelte.config.js` because
+OAuth token requests are form-encoded server-to-server POSTs without an
+`Origin` header; no route in this app relies on cookie authentication.
+
 ## Manual flows
 
 - GitHub Actions can manually call the Bluesky, Crucial Tracks, Foursquare, PDS
@@ -74,6 +90,7 @@ Non-secret config lives in `wrangler.jsonc`:
 - Bluesky updates identity
 - Personal media PDS service and DID
 - Standard.site sync enablement
+- MCP public origin (`MCP_PUBLIC_ORIGIN`)
 - Worker cron cadence
 - `CHECKINS_KV` binding
 
@@ -86,6 +103,7 @@ Secrets live in Cloudflare and GitHub Actions, never in source:
 - `FOURSQUARE_CLIENT_ID`
 - `FOURSQUARE_CLIENT_SECRET`
 - `FOURSQUARE_ACCESS_TOKEN` or stored OAuth token in `CHECKINS_KV`
+- `MCP_TOKEN_SECRET` and `MCP_OWNER_PASSWORD` (optional; enable the MCP connector)
 
 GitHub Actions also needs `CLOUDFLARE_ACCOUNT_ID` and
 `CLOUDFLARE_API_TOKEN` to deploy.

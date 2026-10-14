@@ -16,7 +16,8 @@
     "MEDIA_PDS_DID": "did:plc:vt4k6d3e5rjw65cuzaf3nufq",
     "PIKA_MICROPUB_ENDPOINT": "https://pika.page/micropub",
     "PUBLICATION_URI": "at://did:plc:peshyp24p4yyoaz3zdsppp3e/site.standard.publication/3mgwfts634r2z",
-    "STANDARD_SITE_SYNC_ENABLED": "true"
+    "STANDARD_SITE_SYNC_ENABLED": "true",
+    "MCP_PUBLIC_ORIGIN": "https://sync.lowvelocity.org"
   },
   "routes": [
     {
