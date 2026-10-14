@@ -7,6 +7,8 @@ declare global {
     GHOST_ADMIN_API_KEY: string;
     GHOST_STAFF_ACCESS_TOKEN: string;
     GHOST_WEBHOOK_SECRET: string;
+    MCP_OWNER_PASSWORD?: string;
+    MCP_TOKEN_SECRET?: string;
     PIKA_MICROPUB_TOKEN?: string;
     SWARM_ACCESS_TOKEN?: string;
   }
@@ -19,6 +21,8 @@ declare global {
     BLUESKY_UPDATES_IDENTIFIER?: string;
     CHECKINS_KV?: KVNamespace;
     GHOST_URL: string;
+    MCP_ALLOWED_REDIRECT_URIS?: string;
+    MCP_PUBLIC_ORIGIN?: string;
     MEDIA_PDS_DID?: string;
     MEDIA_PDS_SERVICE?: string;
     PIKA_MICROPUB_ENDPOINT?: string;
