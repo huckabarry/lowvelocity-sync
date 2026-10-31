@@ -47,7 +47,7 @@ function assertGhostPost(post: GhostPost | undefined): GhostPost {
   return post;
 }
 
-export async function ghostHeaders(config: SyncConfig): Promise<HeadersInit> {
+export async function ghostHeaders(config: Pick<SyncConfig, 'ghostAdminApiKey'>): Promise<HeadersInit> {
   return {
     Accept: 'application/json',
     'Accept-Version': 'v5.0',
@@ -131,7 +131,7 @@ export async function findGhostPostBySlug(
   return (type === 'pages' ? body.pages?.[0] : body.posts?.[0]) ?? null;
 }
 
-function ghostTagFilterValue(tag: string): string {
+export function ghostTagFilterValue(tag: string): string {
   const normalized = String(tag || '').trim().toLowerCase();
   const internal = normalized.startsWith('#');
   const slug = normalized

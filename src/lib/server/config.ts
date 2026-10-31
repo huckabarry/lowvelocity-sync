@@ -1,3 +1,5 @@
+import { getMcpAuthConfig } from './mcp/oauth.ts';
+
 export interface SyncConfig {
   ghostUrl: string;
   ghostAdminApiKey: string;
@@ -86,6 +88,8 @@ export function configurationStatus(platform: App.Platform | undefined) {
     checkins: Boolean(env?.FOURSQUARE_ACCESS_TOKEN || env?.SWARM_ACCESS_TOKEN),
     checkinsTokenStore: Boolean(env?.CHECKINS_KV),
     checkinsOAuth: Boolean(env?.FOURSQUARE_CLIENT_ID && env?.FOURSQUARE_CLIENT_SECRET),
-    standardSiteSyncEnabled: env?.STANDARD_SITE_SYNC_ENABLED !== 'false'
+    standardSiteSyncEnabled: env?.STANDARD_SITE_SYNC_ENABLED !== 'false',
+    // True when the read-only MCP connector is enabled (both MCP secrets set and long enough).
+    mcp: getMcpAuthConfig(env) !== null
   };
 }

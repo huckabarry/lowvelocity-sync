@@ -487,6 +487,7 @@ test('finds latest Ghost posts by public and internal tag slugs', async () => {
       ghostUrl: 'https://lowvelocity.org',
       ghostAdminApiKey: `id:${'a'.repeat(64)}`,
       ghostWebhookSecret: 'secret',
+      pikaMicropubEndpoint: 'https://pika.page/micropub',
       atprotoService: 'https://bsky.social',
       atprotoIdentifier: 'example.test',
       atprotoDid: 'did:plc:test',
