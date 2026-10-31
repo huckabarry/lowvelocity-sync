@@ -1,4 +1,4 @@
-// Minimal, stateless OAuth 2.1 authorization server for the read-only MCP
+// Minimal OAuth 2.1 authorization server for the read-only MCP
 // endpoint. It implements what Claude's custom connectors use:
 //
 // - RFC 9728 protected resource metadata
@@ -7,14 +7,13 @@
 // - Authorization code grant with mandatory PKCE (S256)
 // - Refresh tokens
 //
-// Every credential (client IDs, authorization codes, access and refresh
-// tokens) is an HMAC-signed token, so nothing needs to be stored except a
-// short-lived "code already used" marker and a login-failure counter, both in
-// the existing CHECKINS_KV namespace when it is available.
+// Signed credentials are backed by atomic Durable Object replay/rotation state.
+// Workers KV is not suitable for authentication concurrency control.
 //
 // The signing key is derived from MCP_TOKEN_SECRET *and* MCP_OWNER_PASSWORD,
 // so rotating either secret immediately signs out every connected client.
 
+import type { AuthOperation, AuthStore } from './auth-state.ts';
 import { timingSafeStringEqual } from '../crypto.ts';
 
 export const MCP_SCOPE = 'ghost:read';
@@ -27,11 +26,8 @@ export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 export const AUTHORIZATION_CODE_TTL_SECONDS = 5 * 60;
 export const MIN_OWNER_PASSWORD_LENGTH = 16;
-export const MAX_LOGIN_FAILURES_PER_HOUR = 10;
 
 const TOKEN_PREFIX = 'lvm1';
-const CODE_USED_PREFIX = 'mcp:oauth-code-used:';
-const LOGIN_FAILURE_PREFIX = 'mcp:oauth-login-failures:';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -39,12 +35,6 @@ export interface McpAuthConfig {
   tokenSecret: string;
   ownerPassword: string;
   allowedRedirectUris: string[];
-}
-
-/** The subset of a Workers KV namespace this module uses. */
-export interface KeyValueStore {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
 type ClientAuthMethod = 'none' | 'client_secret_post' | 'client_secret_basic';
@@ -71,6 +61,7 @@ interface CodeClaims {
 
 export interface BearerClaims {
   typ: 'access' | 'refresh';
+  family: string;
   cid: string;
   scope: string;
   aud: string;
@@ -99,6 +90,8 @@ export class OAuthError extends Error {
 }
 
 interface McpEnv {
+  MCP_ENABLED?: unknown;
+  MCP_AUTH?: unknown;
   MCP_TOKEN_SECRET?: unknown;
   MCP_OWNER_PASSWORD?: unknown;
   MCP_ALLOWED_REDIRECT_URIS?: unknown;
@@ -109,10 +102,11 @@ function nonEmpty(value: unknown): string | undefined {
 }
 
 /**
- * Returns null unless both MCP secrets are configured, so the MCP and OAuth
- * routes stay switched off until the owner opts in.
+ * Requires explicit enablement, the durable binding, and both valid secrets.
+ * Production stays off until staged authentication verification is complete.
  */
 export function getMcpAuthConfig(env: McpEnv | undefined): McpAuthConfig | null {
+  if (env?.MCP_ENABLED !== 'true' || !env?.MCP_AUTH) return null;
   const tokenSecret = nonEmpty(env?.MCP_TOKEN_SECRET);
   const ownerPassword = nonEmpty(env?.MCP_OWNER_PASSWORD);
   if (!tokenSecret || tokenSecret.length < 32) return null;
@@ -458,21 +452,18 @@ export function ownerPasswordMatches(config: McpAuthConfig, candidate: string): 
   return timingSafeStringEqual(candidate, config.ownerPassword);
 }
 
-function failureBucket(now: number): string {
-  return `${LOGIN_FAILURE_PREFIX}${new Date(now).toISOString().slice(0, 13)}`;
+async function authOperation(store: AuthStore | undefined, operation: AuthOperation): Promise<boolean> {
+  if (!store) throw new OAuthError('temporarily_unavailable', 'Authentication storage is unavailable', 503);
+  try {
+    return await store.execute(operation);
+  } catch {
+    throw new OAuthError('temporarily_unavailable', 'Authentication storage is unavailable', 503);
+  }
 }
 
-export async function loginAllowed(store: KeyValueStore | undefined, now = Date.now()): Promise<boolean> {
-  if (!store) return true;
-  const count = Number((await store.get(failureBucket(now))) ?? 0);
-  return !(count >= MAX_LOGIN_FAILURES_PER_HOUR);
-}
-
-export async function recordLoginFailure(store: KeyValueStore | undefined, now = Date.now()): Promise<void> {
-  if (!store) return;
-  const key = failureBucket(now);
-  const count = Number((await store.get(key)) ?? 0);
-  await store.put(key, String(count + 1), { expirationTtl: 2 * 60 * 60 });
+/** Reserve before checking a password, including successes, to bound concurrency. */
+export function reserveLoginAttempt(store: AuthStore | undefined, now = Date.now()): Promise<boolean> {
+  return authOperation(store, { kind: 'login', now });
 }
 
 // ---------------------------------------------------------------------------
@@ -521,12 +512,12 @@ export function parseTokenRequest(form: URLSearchParams, authorization: string |
   };
 }
 
-async function issueTokens(config: McpAuthConfig, cid: string, scope: string, origin: string, now: number) {
+async function issueTokens(config: McpAuthConfig, cid: string, scope: string, origin: string, now: number, family: string, refreshId: string, expires: number) {
   const { issuer, resource } = mcpUrls(origin);
   const issuedAt = Math.floor(now / 1000);
-  const base = { cid, scope, aud: resource, iss: issuer, iat: issuedAt };
+  const base = { family, cid, scope, aud: resource, iss: issuer, iat: issuedAt };
   const accessToken = await sign(config, { typ: 'access', ...base, jti: randomId(), exp: issuedAt + ACCESS_TOKEN_TTL_SECONDS });
-  const refreshToken = await sign(config, { typ: 'refresh', ...base, jti: randomId(), exp: issuedAt + REFRESH_TOKEN_TTL_SECONDS });
+  const refreshToken = await sign(config, { typ: 'refresh', ...base, jti: refreshId, exp: expires });
   return {
     access_token: accessToken,
     token_type: 'Bearer',
@@ -540,7 +531,7 @@ export async function exchangeToken(
   config: McpAuthConfig,
   request: TokenRequest,
   origin: string,
-  store: KeyValueStore | undefined,
+  store: AuthStore | undefined,
   now = Date.now()
 ) {
   const { resource } = mcpUrls(origin);
@@ -566,18 +557,20 @@ export async function exchangeToken(
       throw new OAuthError('invalid_grant', 'PKCE verification failed');
     }
     if (!sameResource(code.aud, resource)) throw new OAuthError('invalid_grant', 'The authorization code is for another resource');
-    if (store) {
-      const usedKey = `${CODE_USED_PREFIX}${code.jti}`;
-      if (await store.get(usedKey)) throw new OAuthError('invalid_grant', 'The authorization code has already been used');
-      await store.put(usedKey, '1', { expirationTtl: AUTHORIZATION_CODE_TTL_SECONDS + 120 });
+    const family = randomId();
+    const refreshId = randomId();
+    const expires = Math.floor(now / 1000) + REFRESH_TOKEN_TTL_SECONDS;
+    const tokens = await issueTokens(config, code.cid, code.scope, origin, now, family, refreshId, expires);
+    if (!await authOperation(store, { kind: 'create', now, code: code.jti, codeExpires: code.exp * 1000, family, current: refreshId, expires: expires * 1000 })) {
+      throw new OAuthError('invalid_grant', 'The authorization code has already been used');
     }
-    return issueTokens(config, code.cid, code.scope, origin, now);
+    return tokens;
   }
 
   if (request.grantType === 'refresh_token') {
     await authenticateClient(config, request.clientId, request.clientSecret, now);
     const refresh = request.refreshToken ? await verify<BearerClaims>(config, request.refreshToken, 'refresh', now) : null;
-    if (!refresh || !sameResource(refresh.aud, resource)) {
+    if (!refresh || !refresh.family || refresh.iss !== mcpUrls(origin).issuer || !sameResource(refresh.aud, resource)) {
       throw new OAuthError('invalid_grant', 'The refresh token is invalid or expired');
     }
     if (refresh.cid !== (await clientRef(request.clientId!))) {
@@ -587,7 +580,12 @@ export async function exchangeToken(
     if (requested.some((scope) => scope !== refresh.scope)) {
       throw new OAuthError('invalid_scope', 'A refresh cannot widen the granted scope');
     }
-    return issueTokens(config, refresh.cid, refresh.scope, origin, now);
+    const next = randomId();
+    const tokens = await issueTokens(config, refresh.cid, refresh.scope, origin, now, refresh.family, next, refresh.exp);
+    if (!await authOperation(store, { kind: 'rotate', now, family: refresh.family, current: refresh.jti, next })) {
+      throw new OAuthError('invalid_grant', 'Refresh token reused or revoked; authorize again');
+    }
+    return tokens;
   }
 
   throw new OAuthError('unsupported_grant_type', 'Only authorization_code and refresh_token grants are supported');
@@ -600,6 +598,7 @@ export async function verifyAccessToken(
   config: McpAuthConfig,
   authorization: string | null,
   origin: string,
+  store: AuthStore | undefined,
   now = Date.now()
 ): Promise<BearerClaims | null> {
   const match = authorization?.match(/^Bearer\s+(\S+)$/i);
@@ -609,6 +608,7 @@ export async function verifyAccessToken(
   const { issuer, resource } = mcpUrls(origin);
   if (claims.iss !== issuer || !sameResource(claims.aud, resource)) return null;
   if (!claims.scope.split(/\s+/).includes(MCP_SCOPE)) return null;
+  if (!claims.family || !await authOperation(store, { kind: 'active', now, family: claims.family })) return null;
   return claims;
 }
 

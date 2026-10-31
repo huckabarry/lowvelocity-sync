@@ -17,6 +17,7 @@
     "PIKA_MICROPUB_ENDPOINT": "https://pika.page/micropub",
     "PUBLICATION_URI": "at://did:plc:peshyp24p4yyoaz3zdsppp3e/site.standard.publication/3mgwfts634r2z",
     "STANDARD_SITE_SYNC_ENABLED": "true",
+    "MCP_ENABLED": "false",
     "MCP_PUBLIC_ORIGIN": "https://sync.lowvelocity.org"
   },
   "routes": [
@@ -34,6 +35,10 @@
       "id": "7170a4243d36412f9b06a28d3c170875"
     }
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_AUTH", "class_name": "McpAuthState" }]
+  },
+  "migrations": [{ "tag": "mcp-auth-v1", "new_sqlite_classes": ["McpAuthState"] }],
   "assets": {
     "binding": "ASSETS",
     "directory": ".svelte-kit/cloudflare",

@@ -21,6 +21,8 @@ declare global {
     BLUESKY_UPDATES_IDENTIFIER?: string;
     CHECKINS_KV?: KVNamespace;
     GHOST_URL: string;
+    MCP_AUTH?: DurableObjectNamespace;
+    MCP_ENABLED?: string;
     MCP_ALLOWED_REDIRECT_URIS?: string;
     MCP_PUBLIC_ORIGIN?: string;
     MEDIA_PDS_DID?: string;

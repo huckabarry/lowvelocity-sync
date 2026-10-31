@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/patch-scheduled-worker.mjs && node --check .svelte-kit/cloudflare/_worker.js",
+    "build": "vite build && node scripts/patch-scheduled-worker.mjs && node scripts/patch-mcp-worker.mjs && node --check .svelte-kit/cloudflare/_worker.js",
     "preview": "npm run build && wrangler dev",
     "prepare": "svelte-kit sync",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -20,12 +20,16 @@
     "webhook:test-live": "node --experimental-strip-types scripts/trigger-ghost-edit.ts",
     "types": "wrangler types",
     "deploy:dry": "npm run build && wrangler deploy --dry-run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "test:integration": "node tests/integration/mcp-worker.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "^7.2.8",
     "@sveltejs/kit": "^2.57.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260617.1",
     "svelte": "^5.55.2",
     "svelte-check": "^4.4.6",
     "typescript": "^6.0.2",

@@ -8,39 +8,30 @@ import {
   exchangeToken,
   getMcpAuthConfig,
   issueAuthorizationCode,
-  loginAllowed,
-  MAX_LOGIN_FAILURES_PER_HOUR,
+  reserveLoginAttempt,
   OAuthError,
   parseTokenRequest,
   protectedResourceMetadata,
-  recordLoginFailure,
   registerClient,
   validateAuthorizationRequest,
   verifyAccessToken,
-  type KeyValueStore,
   type McpAuthConfig
 } from '../src/lib/server/mcp/oauth.ts';
 import { lookupPath, nqlString } from '../src/lib/server/mcp/ghost-read.ts';
 import { handleMcpPayload, TOOLS } from '../src/lib/server/mcp/server.ts';
+
+import { TestAuthStore as MemoryStore } from './mcp-store.ts';
+import { MAX_LOGIN_ATTEMPTS_PER_HOUR } from '../src/lib/server/mcp/auth-state.ts';
 
 const ORIGIN = 'https://sync.lowvelocity.org';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const GHOST = { ghostUrl: 'https://lowvelocity.org', ghostAdminApiKey: 'abc123:00112233445566778899aabbccddeeff' };
 
 const config: McpAuthConfig = getMcpAuthConfig({
+  MCP_ENABLED: 'true', MCP_AUTH: {},
   MCP_TOKEN_SECRET: 'x'.repeat(48),
   MCP_OWNER_PASSWORD: 'correct horse battery staple'
 })!;
-
-class MemoryStore implements KeyValueStore {
-  values = new Map<string, string>();
-  async get(key: string) {
-    return this.values.get(key) ?? null;
-  }
-  async put(key: string, value: string) {
-    this.values.set(key, value);
-  }
-}
 
 function pkcePair() {
   const verifier = 'verifier-' + 'a'.repeat(50);
@@ -144,11 +135,11 @@ test('full authorization code flow issues tokens that the MCP endpoint accepts',
   assert.equal(tokens.expires_in, ACCESS_TOKEN_TTL_SECONDS);
   assert.equal(tokens.scope, 'ghost:read');
 
-  const claims = await verifyAccessToken(config, `Bearer ${tokens.access_token}`, ORIGIN);
+  const claims = await verifyAccessToken(config, `Bearer ${tokens.access_token}`, ORIGIN, store);
   assert.ok(claims);
-  assert.equal(await verifyAccessToken(config, `Bearer ${tokens.refresh_token}`, ORIGIN), null, 'refresh tokens are not access tokens');
-  assert.equal(await verifyAccessToken(config, `Bearer ${tokens.access_token}`, 'https://lowvelocity-sync.example.workers.dev'), null);
-  assert.equal(await verifyAccessToken(config, null, ORIGIN), null);
+  assert.equal(await verifyAccessToken(config, `Bearer ${tokens.refresh_token}`, ORIGIN, store), null, 'refresh tokens are not access tokens');
+  assert.equal(await verifyAccessToken(config, `Bearer ${tokens.access_token}`, 'https://lowvelocity-sync.example.workers.dev', store), null);
+  assert.equal(await verifyAccessToken(config, null, ORIGIN, store), null);
 
   // Codes are single-use.
   await assert.rejects(
@@ -158,7 +149,7 @@ test('full authorization code flow issues tokens that the MCP endpoint accepts',
 
   // Refresh tokens rotate and keep the same scope.
   const refreshed = await exchangeToken(config, { grantType: 'refresh_token', refreshToken: tokens.refresh_token, clientId: client_id }, ORIGIN, store);
-  assert.ok(await verifyAccessToken(config, `Bearer ${refreshed.access_token}`, ORIGIN));
+  assert.ok(await verifyAccessToken(config, `Bearer ${refreshed.access_token}`, ORIGIN, store));
 });
 
 test('token exchange rejects a bad PKCE verifier, redirect, or client', async () => {
@@ -175,6 +166,7 @@ test('token exchange rejects a bad PKCE verifier, redirect, or client', async ()
 });
 
 test('confidential clients must authenticate with their issued secret', async () => {
+  const store = new MemoryStore();
   const client = await registerClient(config, { redirect_uris: [CLAUDE_CALLBACK], token_endpoint_auth_method: 'client_secret_basic' });
   assert.ok(client.client_secret);
   const { verifier, challenge } = pkcePair();
@@ -184,7 +176,7 @@ test('confidential clients must authenticate with their issued secret', async ()
   await assert.rejects(exchangeToken(config, parseTokenRequest(form, null), ORIGIN, undefined), /client_id is required/);
 
   const basic = `Basic ${btoa(`${encodeURIComponent(client.client_id)}:${encodeURIComponent(client.client_secret!)}`)}`;
-  const tokens = await exchangeToken(config, parseTokenRequest(form, basic), ORIGIN, undefined);
+  const tokens = await exchangeToken(config, parseTokenRequest(form, basic), ORIGIN, store);
   assert.ok(tokens.access_token);
 
   const wrong = `Basic ${btoa(`${encodeURIComponent(client.client_id)}:nope`)}`;
@@ -192,6 +184,7 @@ test('confidential clients must authenticate with their issued secret', async ()
 });
 
 test('changing the owner passphrase revokes every issued token', async () => {
+  const store = new MemoryStore();
   const { client_id } = await registerClient(config, { redirect_uris: [CLAUDE_CALLBACK], token_endpoint_auth_method: 'none' });
   const { verifier, challenge } = pkcePair();
   const code = await authorizedCode(client_id, challenge);
@@ -199,21 +192,20 @@ test('changing the owner passphrase revokes every issued token', async () => {
     config,
     { grantType: 'authorization_code', code, redirectUri: CLAUDE_CALLBACK, codeVerifier: verifier, clientId: client_id },
     ORIGIN,
-    undefined
+    store
   );
   const rotated = { ...config, ownerPassword: 'a completely different passphrase' };
-  assert.equal(await verifyAccessToken(rotated, `Bearer ${tokens.access_token}`, ORIGIN), null);
+  assert.equal(await verifyAccessToken(rotated, `Bearer ${tokens.access_token}`, ORIGIN, store), null);
 });
 
 test('login attempts are throttled per hour', async () => {
   const store = new MemoryStore();
   const now = Date.UTC(2026, 9, 13, 5, 30);
-  for (let index = 0; index < MAX_LOGIN_FAILURES_PER_HOUR; index += 1) {
-    assert.equal(await loginAllowed(store, now), true);
-    await recordLoginFailure(store, now);
+  for (let index = 0; index < MAX_LOGIN_ATTEMPTS_PER_HOUR; index += 1) {
+    assert.equal(await reserveLoginAttempt(store, now), true);
   }
-  assert.equal(await loginAllowed(store, now), false);
-  assert.equal(await loginAllowed(store, now + 60 * 60 * 1000), true);
+  assert.equal(await reserveLoginAttempt(store, now), false);
+  assert.equal(await reserveLoginAttempt(store, now + 60 * 60 * 1000), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -396,4 +388,107 @@ test('lookup paths and NQL quoting are safe', () => {
   assert.throws(() => lookupPath(GHOST, 'posts', { id: '../settings' }), /24-character/);
   assert.throws(() => lookupPath(GHOST, 'posts', { url: 'https://example.com/post/' }), /lowvelocity\.org/);
   assert.throws(() => lookupPath(GHOST, 'posts', { slug: '../../settings' }), /invalid/);
+});
+
+// P1 regressions: these use the real Durable Object implementation via Miniflare.
+test('concurrent login reservations enforce a rolling limit across the hour boundary', async () => {
+  const store = new MemoryStore();
+  const now = Date.UTC(2026, 9, 30, 12, 59, 59);
+  const results = await Promise.all(Array.from({ length: 50 }, () => reserveLoginAttempt(store, now)));
+  assert.equal(results.filter(Boolean).length, 10);
+  assert.equal(await reserveLoginAttempt(store, now + 2000), false);
+  assert.equal(await reserveLoginAttempt(store, now + 3_600_000), true);
+});
+
+async function grant(store = new MemoryStore()) {
+  const { client_id } = await registerClient(config, { redirect_uris: [CLAUDE_CALLBACK], token_endpoint_auth_method: 'none' });
+  const { verifier, challenge } = pkcePair();
+  const code = await authorizedCode(client_id, challenge);
+  const request = { grantType: 'authorization_code', code, redirectUri: CLAUDE_CALLBACK, codeVerifier: verifier, clientId: client_id };
+  return { store, client_id, request };
+}
+
+const invalidGrant = (error: unknown) => error instanceof OAuthError && error.error === 'invalid_grant';
+test('concurrent authorization-code redemption has exactly one winner', async () => {
+  const { store, request } = await grant();
+  const results = await Promise.allSettled(Array.from({ length: 20 }, () => exchangeToken(config, request, ORIGIN, store)));
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.ok(results.filter(result => result.status === 'rejected').every(result => invalidGrant(result.reason)));
+});
+
+test('refresh replay revokes descendants and access tokens without affecting another grant', async () => {
+  const { store, client_id, request } = await grant();
+  const first = await exchangeToken(config, request, ORIGIN, store);
+  const refresh = (token: string) => exchangeToken(config, { grantType: 'refresh_token', refreshToken: token, clientId: client_id }, ORIGIN, store);
+  const second = await refresh(first.refresh_token);
+  assert.notEqual(second.refresh_token, first.refresh_token);
+  const third = await refresh(second.refresh_token);
+  assert.ok(await verifyAccessToken(config, `Bearer ${third.access_token}`, ORIGIN, store));
+  const otherGrant = await grant(store);
+  const independent = await exchangeToken(config, otherGrant.request, ORIGIN, store);
+  await assert.rejects(refresh(first.refresh_token), invalidGrant);
+  await assert.rejects(refresh(second.refresh_token), invalidGrant);
+  await assert.rejects(refresh(third.refresh_token), invalidGrant);
+  for (const tokens of [first, second, third]) {
+    assert.equal(await verifyAccessToken(config, `Bearer ${tokens.access_token}`, ORIGIN, store), null);
+  }
+  assert.ok(await verifyAccessToken(config, `Bearer ${independent.access_token}`, ORIGIN, store));
+});
+
+test('concurrent refresh has one winner and replay revokes that winner too', async () => {
+  const { store, client_id, request } = await grant();
+  const first = await exchangeToken(config, request, ORIGIN, store);
+  const refresh = { grantType: 'refresh_token', refreshToken: first.refresh_token, clientId: client_id };
+  const results = await Promise.allSettled(Array.from({ length: 20 }, () => exchangeToken(config, refresh, ORIGIN, store)));
+  const successes = results.filter(result => result.status === 'fulfilled');
+  assert.equal(successes.length, 1);
+  assert.ok(results.filter(result => result.status === 'rejected').every(result => invalidGrant(result.reason)));
+  const winner = successes[0].value;
+  assert.equal(await verifyAccessToken(config, `Bearer ${winner.access_token}`, ORIGIN, store), null);
+  await assert.rejects(exchangeToken(config, { ...refresh, refreshToken: winner.refresh_token }, ORIGIN, store), invalidGrant);
+});
+
+test('wrong client/resource/scope cannot consume or revoke a valid refresh', async () => {
+  const { store, client_id, request } = await grant();
+  const first = await exchangeToken(config, request, ORIGIN, store);
+  const other = await registerClient(config, { redirect_uris: [CLAUDE_CALLBACK], token_endpoint_auth_method: 'none', client_name: 'different' });
+  const refresh = { grantType: 'refresh_token', refreshToken: first.refresh_token, clientId: client_id };
+  await assert.rejects(exchangeToken(config, { ...refresh, clientId: other.client_id }, ORIGIN, store), invalidGrant);
+  await assert.rejects(exchangeToken(config, { ...refresh, resource: 'https://evil.example/mcp' }, ORIGIN, store), /own MCP/);
+  await assert.rejects(exchangeToken(config, { ...refresh, scope: 'ghost:write' }, ORIGIN, store), /widen/);
+  assert.ok((await exchangeToken(config, refresh, ORIGIN, store)).access_token);
+});
+
+test('refresh lifetime is absolute and state survives new stub instances', async () => {
+  const { store, client_id, request } = await grant();
+  const now = Date.now();
+  const first = await exchangeToken(config, request, ORIGIN, store, now);
+  const reconnect = new MemoryStore();
+  reconnect.name = store.name;
+  const refresh = { grantType: 'refresh_token', refreshToken: first.refresh_token, clientId: client_id };
+  const second = await exchangeToken(config, refresh, ORIGIN, reconnect, now + 29 * 86_400_000);
+  const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+  assert.equal(claims(first.refresh_token).exp, claims(second.refresh_token).exp);
+  await assert.rejects(exchangeToken(config, { ...refresh, refreshToken: second.refresh_token }, ORIGIN, store, now + 30 * 86_400_000), invalidGrant);
+});
+
+test('missing or failing storage never grants login, tokens, or authenticated access', async () => {
+  const { store, request } = await grant();
+  const tokens = await exchangeToken(config, request, ORIGIN, store);
+  const unavailable = (error: unknown) => error instanceof OAuthError && error.status === 503;
+  for (const broken of [undefined, { execute: async () => { throw new Error('outage'); } }]) {
+    await assert.rejects(reserveLoginAttempt(broken), unavailable);
+    const fresh = await grant();
+    await assert.rejects(exchangeToken(config, fresh.request, ORIGIN, broken), unavailable);
+    await assert.rejects(verifyAccessToken(config, `Bearer ${tokens.access_token}`, ORIGIN, broken), unavailable);
+    await assert.rejects(exchangeToken(config, { grantType: 'refresh_token', refreshToken: tokens.refresh_token, clientId: request.clientId }, ORIGIN, broken), unavailable);
+  }
+});
+
+test('MCP requires explicit opt-in, both valid secrets, and the durable binding', () => {
+  const env = { MCP_ENABLED: 'true', MCP_AUTH: {}, MCP_TOKEN_SECRET: 'x'.repeat(48), MCP_OWNER_PASSWORD: 'correct horse battery staple' };
+  assert.ok(getMcpAuthConfig(env));
+  for (const changes of [{ MCP_ENABLED: undefined }, { MCP_ENABLED: 'false' }, { MCP_AUTH: undefined }, { MCP_TOKEN_SECRET: undefined }, { MCP_OWNER_PASSWORD: undefined }]) {
+    assert.equal(getMcpAuthConfig({ ...env, ...changes }), null);
+  }
 });

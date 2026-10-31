@@ -3,9 +3,9 @@ import { authorizePage, errorPage, pageHeaders } from '$lib/server/mcp/authorize
 import {
   authorizationRedirect,
   issueAuthorizationCode,
-  loginAllowed,
+  reserveLoginAttempt,
+  OAuthError,
   ownerPasswordMatches,
-  recordLoginFailure,
   validateAuthorizationRequest,
   type AuthorizationValidation,
   type McpAuthConfig
@@ -57,13 +57,17 @@ export const POST: RequestHandler = async ({ request, url, platform }) => {
   }
 
   const store = mcpStore(platform);
-  if (!(await loginAllowed(store))) {
-    console.warn(JSON.stringify({ message: 'mcp oauth login throttled' }));
-    return html(config, authorizePage(authorization, { error: 'Too many failed attempts. Try again in an hour.' }), 429);
+  try {
+    if (!(await reserveLoginAttempt(store))) {
+      console.warn(JSON.stringify({ message: 'mcp oauth login throttled' }));
+      return html(config, authorizePage(authorization, { error: 'Too many login attempts. Try again in an hour.' }), 429);
+    }
+  } catch (error) {
+    if (error instanceof OAuthError) return html(config, errorPage('Authentication temporarily unavailable.'), error.status);
+    throw error;
   }
 
   if (!ownerPasswordMatches(config, form.get('password') ?? '')) {
-    await recordLoginFailure(store);
     console.warn(JSON.stringify({ message: 'mcp oauth login failed' }));
     return html(config, authorizePage(authorization, { error: 'That passphrase is not right.' }), 401);
   }

@@ -1,4 +1,5 @@
-import { CORS_HEADERS, getMcpAuthConfig, type KeyValueStore, type McpAuthConfig } from './oauth.ts';
+import { durableAuthStore, type AuthStore } from './auth-state.ts';
+import { CORS_HEADERS, getMcpAuthConfig, type McpAuthConfig } from './oauth.ts';
 
 export function mcpAuthConfig(platform: App.Platform | undefined): McpAuthConfig | null {
   return getMcpAuthConfig(platform?.env);
@@ -22,8 +23,8 @@ export function publicOrigin(platform: App.Platform | undefined, url: URL): stri
   return url.origin;
 }
 
-export function mcpStore(platform: App.Platform | undefined): KeyValueStore | undefined {
-  return platform?.env?.CHECKINS_KV;
+export function mcpStore(platform: App.Platform | undefined): AuthStore | undefined {
+  return durableAuthStore(platform?.env?.MCP_AUTH);
 }
 
 export function corsJson(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}): Response {
@@ -42,7 +43,7 @@ export function preflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-/** The MCP feature is off until MCP_TOKEN_SECRET and MCP_OWNER_PASSWORD exist. */
+/** Explicit opt-in, both secrets, and the durable binding are required. */
 export function notConfigured(): Response {
   return corsJson({ error: 'not_found', error_description: 'The MCP connector is not enabled on this Worker.' }, { status: 404 });
 }

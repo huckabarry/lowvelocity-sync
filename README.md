@@ -143,19 +143,30 @@ Claude custom connectors support OAuth, so the Worker includes a small OAuth
   Claude's own callback URLs are accepted (`MCP_ALLOWED_REDIRECT_URIS`).
 - Connecting opens a page on `sync.lowvelocity.org` that asks for the **owner
   passphrase** (`MCP_OWNER_PASSWORD`). Without it, no token is issued. Ten
-  wrong attempts in an hour lock the page until the next hour.
+  total attempts (including successful ones) per rolling hour are reserved
+  atomically before checking the password. Concurrent requests share one limit.
 - PKCE is required, authorization codes expire in 5 minutes and are single-use,
-  access tokens last 1 hour, and refresh tokens last 30 days.
+  access tokens last up to 1 hour, and each refresh family has an absolute
+  30-day lifetime. Refresh tokens are single-use. Replaying one revokes its
+  entire family, including access tokens; the owner must authorize again.
 - Tokens are signed with a key derived from `MCP_TOKEN_SECRET` and
   `MCP_OWNER_PASSWORD`. **Changing either secret disconnects every client.**
 - Tokens only work on `/mcp`. They cannot call the `/admin/*` routes.
-- The only state stored is a "code used" marker and the failed-login counter,
-  both short-lived keys in `CHECKINS_KV` under the `mcp:` prefix.
+- `MCP_AUTH` is a SQLite-backed Durable Object with transactional login
+  reservations, used-code markers, and refresh families. Authentication never
+  falls back to Workers KV or process-local state. Missing/unavailable storage
+  fails closed. `CHECKINS_KV` remains exclusively for existing sync features.
+- SvelteKit's default CSRF checks are enabled. A post-build Worker wrapper
+  permits only originless, form-encoded backend POSTs to exactly `/oauth/token`.
+  It strips cookies and leaves cross-origin/null-origin requests and the consent
+  page protected. `Sec-Fetch-Mode: cors` from Node fetch is supported.
 
 ### Turning it on
 
-The connector stays off (all of these routes return 404) until both secrets
-exist. Set them once; deployments keep them.
+Production is explicitly disabled by `MCP_ENABLED="false"` in `wrangler.jsonc`.
+Do not change it until the staged verification below is complete. Secrets alone
+never enable the connector: both valid secrets, `MCP_AUTH`, and the exact string
+`MCP_ENABLED="true"` are required. Set secrets once; deployments keep them.
 
 ```sh
 # A random signing secret (32+ characters)
@@ -169,7 +180,8 @@ Or in the Cloudflare dashboard: Workers & Pages → `lowvelocity-sync` →
 Settings → Variables and Secrets → Add, type **Secret**, for each name.
 Adding a secret in the dashboard takes effect immediately.
 
-`GET /health` reports `"mcp": true` once both are set.
+`GET /health` reports `configured.mcp: true` only when all requirements are met.
+The checked-in false flag intentionally disables MCP on every normal deployment.
 
 Optional variables (in `wrangler.jsonc`):
 
@@ -180,6 +192,53 @@ Optional variables (in `wrangler.jsonc`):
   separated). The default is Claude's two callbacks:
   `https://claude.ai/api/mcp/auth_callback` and
   `https://claude.com/api/mcp/auth_callback`.
+
+### Verification and deployment requirements
+
+Before merge, run under Node 22:
+
+```sh
+npm ci
+npm test
+npm run check
+npm run build
+npm run test:integration
+npx wrangler deploy --dry-run
+```
+
+Tests run actual SQLite Durable Objects in Miniflare, including concurrent login,
+code redemption, refresh replay, persistence across runtime restarts, and storage
+failure. The built Worker integration checks originless OAuth interoperability,
+CSRF rejection, disabled/missing-binding behavior, admin/webhook isolation, and
+preservation of the scheduled handler. Existing sync/publishing tests remain in
+the suite. CI runs tests, type checks, build, and integration tests before deploy.
+
+Before production enablement:
+
+1. Deploy to a separate staging Worker with its own `MCP_AUTH` namespace, secrets,
+   origin, and test Ghost site. Remove production custom-domain routes and cron
+   triggers from that staging configuration. The `mcp-auth-v1` migration must
+   create `McpAuthState` as a SQLite-backed class; never reuse `CHECKINS_KV`.
+2. Verify Claude's real registration, consent, PKCE exchange, refresh, reconnect,
+   search/read of posts/pages/drafts, and the real Ghost plaintext/NQL queries.
+   Local tests do not establish live Claude/Ghost compatibility.
+3. Verify old-token replay rejects both the old token and its descendants, and
+   confirm an unrelated grant still works. Strict replay protection deliberately
+   rejects retries after a lost refresh response and concurrent client refreshes:
+   those require reconnecting. Check Claude handles this acceptably.
+4. Confirm the Durable Object migration and binding on production while leaving
+   `MCP_ENABLED=false`. Check health and normal import/webhook behavior after the
+   disabled deployment. Enable only in a separately reviewed configuration change.
+
+Operational tradeoffs: the global owner limit can be exhausted by an attacker,
+preventing new logins for up to an hour; established grants can still refresh.
+An edge/WAF limit can reduce this denial-of-service and registration traffic.
+Each authenticated MCP request checks the durable family state, adding latency
+and storage requests. Monitor availability and costs. Do not restore an old auth
+state snapshot or roll back to the vulnerable OAuth code while enabled. Rotate
+an MCP secret after state restoration to invalidate potentially resurrected tokens.
+Disable with `MCP_ENABLED=false`; rotate either secret to revoke all credentials.
+No production secrets or deployment are needed to run the local tests.
 
 ### Connecting Claude
 

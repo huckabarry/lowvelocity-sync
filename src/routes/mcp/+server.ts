@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { ghostReadConfig } from '$lib/server/mcp/ghost-read';
-import { CORS_HEADERS, verifyAccessToken, wwwAuthenticate } from '$lib/server/mcp/oauth';
-import { corsJson, mcpAuthConfig, notConfigured, preflight, publicOrigin } from '$lib/server/mcp/responses';
+import { CORS_HEADERS, OAuthError, verifyAccessToken, wwwAuthenticate } from '$lib/server/mcp/oauth';
+import { corsJson, mcpStore, mcpAuthConfig, notConfigured, preflight, publicOrigin } from '$lib/server/mcp/responses';
 import { handleMcpPayload, parseErrorResponse, SUPPORTED_PROTOCOL_VERSIONS } from '$lib/server/mcp/server';
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -17,7 +17,13 @@ export const POST: RequestHandler = async ({ request, url, platform }) => {
   if (!config) return notConfigured();
 
   const authorization = request.headers.get('authorization');
-  const claims = await verifyAccessToken(config, authorization, publicOrigin(platform, url));
+  let claims;
+  try {
+    claims = await verifyAccessToken(config, authorization, publicOrigin(platform, url), mcpStore(platform));
+  } catch (error) {
+    if (error instanceof OAuthError) return corsJson(error.toJSON(), { status: error.status });
+    throw error;
+  }
   if (!claims) {
     return corsJson(
       { error: authorization ? 'invalid_token' : 'unauthorized', error_description: 'A valid access token is required' },
